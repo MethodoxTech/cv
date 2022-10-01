@@ -336,7 +336,7 @@ namespace cv
                 foreach (var file in Directory.EnumerateFiles(currentFolder))
                 {
                     string relativePath = Path.GetRelativePath(RepoRootPath, file).Replace('\\', '/');
-                    if (!ShouldIgnore(ignoreRules, relativePath))
+                    if (ignoreRules == null || !ShouldIgnore(ignoreRules, relativePath))
                         entries[relativePath] = File.GetLastWriteTimeUtc(file);
                 }
             }
