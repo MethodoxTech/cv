@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "cv": {
+      "commandName": "Project",
+      "commandLineArgs": "status",
+      "workingDirectory": "E:\\DAUENoVC\\DeepDive2"
+    }
+  }
+}
