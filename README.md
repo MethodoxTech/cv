@@ -21,7 +21,7 @@ cv saves history inside the .cv folder. File update time is stored as utc.
 
 cv uses the same .gitignore file as git - but obviously the content is not saved.
 
-At the moment cv just checks whether the beginning of paths match that as specified in .gitignore file - no wildcards is supported.
+At the moment cv just checks whether the beginning of paths match that as specified in .gitignore file - no wildcards is supported. You are welcome to make a PR in [this function](https://github.com/chaojian-zhang/cv/blob/91f711abcf1ba6d6a37ab8d3dc9c2d79ee694cc9/Program.cs#L344) to complete the implementation.
 
 ## Dependency and Platform
 
