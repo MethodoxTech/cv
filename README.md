@@ -21,6 +21,8 @@ cv saves history inside the .cv folder. File update time is stored as utc.
 
 cv uses the same .gitignore file as git - but obviously the content is not saved.
 
+At the moment cv just checks whether the beginning of paths match that as specified in .gitignore file - no wildcards is supported.
+
 ## Dependency and Platform
 
 This program utilizes standard Net 6 and can be compiled to any native environment. The published releases only contains Windows-only builds for obvious reasons. To compile for other platforms, download .Net 6 SDK and build accordingly.
