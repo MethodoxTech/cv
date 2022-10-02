@@ -59,8 +59,8 @@ namespace cv
                             files.Remove(fileChange.Path);
                             break;
                         case FileChange.FileChangeType.Moved:
-                            files.Remove(fileChange.Path);
                             files[fileChange.NewPath] = (UpdateTime: fileChange.UpdateTime, CreationTime: files[fileChange.Path].CreationTime);
+                            files.Remove(fileChange.Path);
                             break;
                         default:
                             break;
