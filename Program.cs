@@ -318,7 +318,7 @@ namespace cv
         {
             string[] ignoreRules = null;
             if (File.Exists(IgnoreFilename))
-                ignoreRules = File.ReadAllLines(IgnoreFilename);
+                ignoreRules = File.ReadAllLines(IgnoreFilename).Where(l => !string.IsNullOrWhiteSpace(l) && !l.Trim().StartsWith('#')).ToArray();
 
             Dictionary<string, DateTime> entries = new Dictionary<string, DateTime>();
             EnumerateAndAddFileEntry(RepoRootPath);
@@ -349,7 +349,7 @@ namespace cv
 
         private static string RepoRootPath = Directory.GetCurrentDirectory();
         private const string RepoControlFolderName = ".cv";
-        private const string IgnoreFilename = ".gitignore";
+        private const string IgnoreFilename = ".cvignore";
         private static string RepoStorageFilePath = Path.Combine(RepoControlFolderName, "versions");
     }
 }
