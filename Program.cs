@@ -78,7 +78,7 @@ namespace cv
             string directory = RepoRootPath;
             if (args.Length == 0)
             {
-                Console.WriteLine($"Usage: cv status|init|commit -m <Message>|log", Color.DarkGreen);
+                Console.WriteLine($"Usage: cv status|init|commit|log -m <Message>|log", Color.DarkGreen);
             }
             else
             {
