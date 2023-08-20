@@ -50,7 +50,7 @@ namespace cv
                     {
                         case FileChange.FileChangeType.New:
                         case FileChange.FileChangeType.Recreated:
-                            files[fileChange.Path] = (UpdateTime: fileChange.UpdateTime, CreationTime: new DateTime(long.Parse(fileChange.NewPath)));
+                            files[fileChange.Path] = (UpdateTime: fileChange.UpdateTime, CreationTime: new DateTime(long.Parse(fileChange.NewPath))); // Remark-cz, 20230820: Why is the variable "NewPath" used as a timestamp here?
                             break;
                         case FileChange.FileChangeType.Updated:
                             files[fileChange.Path] = (UpdateTime: fileChange.UpdateTime, CreationTime: files[fileChange.Path].CreationTime);
