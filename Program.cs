@@ -15,7 +15,7 @@ namespace cv
 
         public FileChangeType ChangeType;
         public string Path; // All paths are relative
-        public string NewPath;
+        public string NewPath;  // Contains creation time if it's new file, otherwise it contains new path if the file was moved
         public DateTime UpdateTime;
         public long Size;
     }
@@ -50,7 +50,7 @@ namespace cv
                     {
                         case FileChange.FileChangeType.New:
                         case FileChange.FileChangeType.Recreated:
-                            files[fileChange.Path] = (UpdateTime: fileChange.UpdateTime, CreationTime: new DateTime(long.Parse(fileChange.NewPath))); // Remark-cz, 20230820: Why is the variable "NewPath" used as a timestamp here?
+                            files[fileChange.Path] = (UpdateTime: fileChange.UpdateTime, CreationTime: new DateTime(long.Parse(fileChange.NewPath))); // Remark-cz, 20230820: Notice "NewPath" contains creation time for new/recreated files
                             break;
                         case FileChange.FileChangeType.Updated:
                             files[fileChange.Path] = (UpdateTime: fileChange.UpdateTime, CreationTime: files[fileChange.Path].CreationTime);
