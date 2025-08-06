@@ -123,6 +123,9 @@ namespace cv
         }
         private static void PrintVersion()
             => Console.WriteLine("cv — Change Version CLI v1.0.3");
+        /// <summary>
+        /// Log all existing commits.
+        /// </summary>
         private static void Log()
         {
             if (!Directory.Exists(RepoControlFolderName))
@@ -141,6 +144,9 @@ namespace cv
             }
             Console.WriteLine(Color.Goldenrod, $"{storage.Commits.Count} {(storage.Commits.Count <= 1 ? "commit" : "commits")}.");
         }
+        /// <summary>
+        /// Commit current changes to the repo.
+        /// </summary>
         private static void Commit(string message)
         {
             if (!Directory.Exists(RepoControlFolderName))
@@ -173,7 +179,9 @@ namespace cv
                 Console.WriteLine(Color.Goldenrod, $"Saved {allChanges.Count} {(allChanges.Count <= 1 ? "file" : "files")}.");
             }
         }
-
+        /// <summary>
+        /// Initialize a new repo.
+        /// </summary>
         private static void Init()
         {
             if (Directory.Exists(RepoControlFolderName))
@@ -185,6 +193,9 @@ namespace cv
                 Console.WriteLine(Color.GreenYellow, $"Repo initialized at: {RepoRootPath}");
             }
         }
+        /// <summary>
+        /// Print all the changes.
+        /// </summary>
         private static void Status()
         {
             if (!Directory.Exists(RepoControlFolderName))
@@ -229,7 +240,6 @@ namespace cv
                 Console.Write(Color.DarkRed, $"{file.Path} ");
                 Console.WriteLine(Color.DarkGray, file.UpdateTime.ToLocalTime());
             }
-
         }
         #endregion
 
@@ -329,11 +339,12 @@ namespace cv
 
             return changes;
         }
+        /// <summary>
+        /// Get all the files that we recognize that's currently under version tracking
+        /// </summary>
         private static Dictionary<string, DateTime> GetActualFiles()
         {
-            string[] ignoreRules = null;
-            if (File.Exists(IgnoreFilename))
-                ignoreRules = File.ReadAllLines(IgnoreFilename).Where(l => !string.IsNullOrWhiteSpace(l) && !l.Trim().StartsWith('#')).ToArray();
+            string[] ignoreRules = ReadIgnoreRules();
 
             Dictionary<string, DateTime> entries = [];
             EnumerateAndAddFileEntry(RepoRootPath);
@@ -355,6 +366,13 @@ namespace cv
                         entries[relativePath] = File.GetLastWriteTimeUtc(file);
                 }
             }
+        }
+        private static string[]? ReadIgnoreRules()
+        {
+            string[]? ignoreRules = null;
+            if (File.Exists(IgnoreFilename))
+                ignoreRules = File.ReadAllLines(IgnoreFilename).Where(l => !string.IsNullOrWhiteSpace(l) && !l.Trim().StartsWith('#')).ToArray(); // Skip empty lines and lines with comments
+            return ignoreRules;
         }
         private static bool ShouldIgnore(string[] rules, string path)
             => rules.Any(path.StartsWith);
