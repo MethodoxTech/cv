@@ -33,3 +33,8 @@ At the moment cv just checks whether the beginning of paths match that as specif
 
 * Official Wiki: https://wiki.methodox.io/en/Utilities/CLI/cv
 * Build downloads: https://github.com/MethodoxTech/cv/releases
+
+Changelog:
+
+* v1.0.3: Modernize.
+* v1.0.4: Add syncing functions.

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Threading.Tasks;
 using Color = System.Drawing.Color;
 using Console = cv.Types.ColorConsole;
 
@@ -15,7 +16,7 @@ namespace cv
         #endregion
 
         #region Methods
-        static void Main(string[] args)
+        private static async Task Main(string[] args)
         {
             // Print help
             if (args.Length == 0 ||
@@ -61,6 +62,18 @@ namespace cv
                 case "log":
                     tool.Log();
                     break;
+                case "push":
+                    if (args.Length != 3)
+                        Console.WriteLine(Color.Red, "Usage: cv push <serverUrl> <apiKey>");
+                    else
+                        await tool.PushAsync(args[1], args[2]);
+                    break;
+                case "pull":
+                    if (args.Length != 3)
+                        Console.WriteLine(Color.Red, "Usage: cv pull <serverUrl> <apiKey>");
+                    else
+                        await tool.PullAsync(args[1], args[2]);
+                    break;
                 default:
                     Console.WriteLine($"Unrecognized command: {action}");
                     break;
@@ -83,16 +96,20 @@ namespace cv
                   list               Show all tracked files (and any uncommitted changes)
                   commit -m <msg>    Commit current changes with message <msg>
                   log                Show commit history
+                  push <url> <key>   Upload new/updated files to cv-server
+                  pull <url> <key>   Download latest files from cv-server
 
                 Options:
                   -h, --help, help   Show this help information
+                  -v, --version      Display version
 
-                See also `.cvignore` to exclude files from tracking.
+                Use `.cvignore` to exclude files from tracking.
+                For push/pull, provide the server base URL (e.g. https://localhost:5001) and your API key.
                 """;
-            Console.WriteLine(Color.Cyan, helpText);
+            Console.WriteLine(Color.Goldenrod, helpText);
         }
         private static void PrintVersion()
-            => Console.WriteLine("cv — Change Version CLI v1.0.3");
+            => Console.WriteLine("cv — Change Version CLI v1.0.4");
         #endregion
     }
 }

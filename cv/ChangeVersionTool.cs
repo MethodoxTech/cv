@@ -5,6 +5,9 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Threading.Tasks;
 using Color = System.Drawing.Color;
 using Console = cv.Types.ColorConsole;
 
@@ -193,8 +196,75 @@ namespace cv
         }
         #endregion
 
-        #region Routines
+        #region Remote Sync
+        /// <summary>
+        /// Push new & updated files to a remote cv‐server.
+        /// </summary>
+        public async Task PushAsync(string serverUrl, string apiKey)
+        {
+            using HttpClient client = new() { BaseAddress = new Uri(serverUrl) };
+            client.DefaultRequestHeaders.Add("X-Api-Key", apiKey);
 
+            Changelist changes = GetChanges();
+            List<FileChange> toUpload = changes.NewFiles
+                .Concat(changes.UpdatedFiles)
+                .ToList();
+
+            if (!toUpload.Any())
+            {
+                Console.WriteLine(Color.Yellow, "Nothing to push: working tree clean.");
+                return;
+            }
+
+            foreach (FileChange? change in toUpload)
+            {
+                string local = Path.Combine(RootPath, change.Path);
+                await using FileStream fs = File.OpenRead(local);
+                StreamContent content = new(fs);
+
+                // Escape spaces, special chars in URL
+                string urlPath = "/files/" + Uri.EscapeDataString(change.Path);
+                HttpResponseMessage resp = await client.PutAsync(urlPath, content);
+                resp.EnsureSuccessStatusCode();
+
+                Console.WriteLine(Color.Green, $"Pushed {change.Path}");
+            }
+        }
+        /// <summary>
+        /// Pull all files from remote cv‐server, overwriting local copies.
+        /// </summary>
+        public async Task PullAsync(string serverUrl, string apiKey)
+        {
+            using HttpClient client = new() { BaseAddress = new Uri(serverUrl) };
+            client.DefaultRequestHeaders.Add("X-Api-Key", apiKey);
+
+            // Get list
+            List<string>? files = await client.GetFromJsonAsync<List<string>>("/files");
+            if (files == null || files.Count == 0)
+            {
+                Console.WriteLine(Color.Yellow, "No files on server.");
+                return;
+            }
+
+            // Download each
+            foreach (string? path in files.OrderBy(p => p))
+            {
+                string urlPath = "/files/" + Uri.EscapeDataString(path);
+                HttpResponseMessage resp = await client.GetAsync(urlPath);
+                if (!resp.IsSuccessStatusCode)
+                {
+                    Console.WriteLine(Color.Red, $"Failed to download {path}: {resp.StatusCode}");
+                    continue;
+                }
+
+                string local = Path.Combine(RootPath, path);
+                Directory.CreateDirectory(Path.GetDirectoryName(local)!);
+                await using FileStream fs = File.Create(local);
+                await resp.Content.CopyToAsync(fs);
+
+                Console.WriteLine(Color.Green, $"Pulled {path}");
+            }
+        }
         #endregion
 
         #region Helpers
