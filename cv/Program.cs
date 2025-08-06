@@ -23,10 +23,10 @@ namespace cv
     public static class SerializationHelper
     {
         #region Configurations
-        private static IDeserializer _deserializer = new StaticDeserializerBuilder(new YamlStaticContext())
+        private readonly static IDeserializer _deserializer = new StaticDeserializerBuilder(new YamlStaticContext())
             .WithNamingConvention(PascalCaseNamingConvention.Instance)
             .Build();
-        private static ISerializer serializer = new StaticSerializerBuilder(new YamlStaticContext())
+        private readonly static ISerializer serializer = new StaticSerializerBuilder(new YamlStaticContext())
             .WithNamingConvention(PascalCaseNamingConvention.Instance)
             .EnsureRoundtrip()
             .Build();
@@ -344,7 +344,7 @@ namespace cv
         /// </summary>
         private static Dictionary<string, DateTime> GetActualFiles()
         {
-            string[] ignoreRules = ReadIgnoreRules();
+            List<IgnoreRule> ignoreRules = ReadIgnoreRules();
 
             Dictionary<string, DateTime> entries = [];
             EnumerateAndAddFileEntry(RepoRootPath);
@@ -367,15 +367,35 @@ namespace cv
                 }
             }
         }
-        private static string[]? ReadIgnoreRules()
+        public static List<IgnoreRule> ReadIgnoreRules()
         {
-            string[]? ignoreRules = null;
-            if (File.Exists(IgnoreFilename))
-                ignoreRules = File.ReadAllLines(IgnoreFilename).Where(l => !string.IsNullOrWhiteSpace(l) && !l.Trim().StartsWith('#')).ToArray(); // Skip empty lines and lines with comments
-            return ignoreRules;
+            if (!File.Exists(IgnoreFilename))
+                return new List<IgnoreRule>();
+
+            // Skip empty lines and lines with comments
+            return File.ReadAllLines(IgnoreFilename)
+                .Select(line => line.Trim())
+                .Where(line => line.Length > 0 && !line.StartsWith("#"))
+                .Select(line => new IgnoreRule(line))
+                .ToList();
         }
-        private static bool ShouldIgnore(string[] rules, string path)
-            => rules.Any(path.StartsWith);
+        public static bool ShouldIgnore(IEnumerable<IgnoreRule> rules, string path, string repoRoot = "")
+        {
+            // Normalize to forward‐slashes
+            path = path.Replace('\\', '/').TrimStart('/');
+            bool? ignored = null;
+
+            foreach (IgnoreRule rule in rules)
+            {
+                if (!rule.IsMatch(path, repoRoot))
+                    continue;
+
+                // Last matching rule wins
+                ignored = !rule.IsNegation;
+            }
+
+            return ignored.GetValueOrDefault(false);
+        }
         #endregion
     }
 }
