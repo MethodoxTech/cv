@@ -3,11 +3,31 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using YamlDotNet.Serialization;
+using YamlDotNet.Serialization.NamingConventions;
 using Color = System.Drawing.Color;
 using Console = cv.Types.ColorConsole;
 
 namespace cv
 {
+    [YamlStaticContext]
+    [YamlSerializable(typeof(RepoStorage))]
+    [YamlSerializable(typeof(RepoStorage.Commit))]
+    public partial class YamlStaticContext : YamlDotNet.Serialization.StaticContext
+    {
+    }
+
+    public static class SerializationHelper
+    {
+       public static IDeserializer deserializer = new StaticDeserializerBuilder(new YamlStaticContext())
+            .WithNamingConvention(PascalCaseNamingConvention.Instance)
+            .Build();
+        public static ISerializer serializer = new StaticSerializerBuilder(new YamlStaticContext())
+            .WithNamingConvention(PascalCaseNamingConvention.Instance)
+            .EnsureRoundtrip()
+            .Build();
+    }
+
     internal class Program
     {
         #region Constants
@@ -61,6 +81,7 @@ namespace cv
                     Log();
                     break;
                 default:
+                    Console.WriteLine($"Unrecognized command: {action}");
                     break;
             }
         }
@@ -98,7 +119,7 @@ namespace cv
                 return;
             }
 
-            RepoStorage storage = new YamlDotNet.Serialization.Deserializer().Deserialize<RepoStorage>(File.ReadAllText(RepoStorageFilePath));
+            RepoStorage storage = SerializationHelper.deserializer.Deserialize<RepoStorage>(File.ReadAllText(RepoStorageFilePath));
             for (int i = 0; i < storage.Commits.Count; i++)
             {
                 RepoStorage.Commit commit = storage.Commits[i];
@@ -116,7 +137,7 @@ namespace cv
             {
                 Changelist changes = GetChanges();
 
-                RepoStorage storage = new YamlDotNet.Serialization.Deserializer().Deserialize<RepoStorage>(File.ReadAllText(RepoStorageFilePath));
+                RepoStorage storage = SerializationHelper.deserializer.Deserialize<RepoStorage>(File.ReadAllText(RepoStorageFilePath));
                 List<FileChange> allChanges = changes.DeletedFiles
                     .Union(changes.UpdatedFiles)
                     .Union(changes.MovedFiles)
@@ -136,7 +157,7 @@ namespace cv
                     Message = message,
                     Time = DateTime.Now.ToUniversalTime()
                 });
-                File.WriteAllText(RepoStorageFilePath, new YamlDotNet.Serialization.Serializer().Serialize(storage));
+                File.WriteAllText(RepoStorageFilePath, SerializationHelper.serializer.Serialize(storage));
                 Console.WriteLine(Color.Goldenrod, $"Saved {allChanges.Count} {(allChanges.Count <= 1 ? "file" : "files")}.");
             }
         }
@@ -148,7 +169,7 @@ namespace cv
             else
             {
                 Directory.CreateDirectory(RepoControlFolderName);
-                File.WriteAllText(RepoStorageFilePath, new YamlDotNet.Serialization.Serializer().Serialize(new RepoStorage()));
+                File.WriteAllText(RepoStorageFilePath, SerializationHelper.serializer.Serialize(new RepoStorage()));
                 Console.WriteLine(Color.GreenYellow, $"Repo initialized at: {RepoRootPath}");
             }
         }
@@ -206,7 +227,7 @@ namespace cv
             if (!Directory.Exists(RepoControlFolderName))
                 throw new InvalidOperationException("Must be inside a CV repo.");
 
-            RepoStorage storage = new YamlDotNet.Serialization.Deserializer().Deserialize<RepoStorage>(File.ReadAllText(RepoStorageFilePath));
+            RepoStorage storage = SerializationHelper.deserializer.Deserialize<RepoStorage>(File.ReadAllText(RepoStorageFilePath));
             Dictionary<string, (DateTime UpdateTime, DateTime CreationTime)> latest = storage.GetLatestFiles();
             Dictionary<string, DateTime> actual = GetActualFiles();
             DateTime lastCommit = storage.Commits.Count > 0 ? storage.Commits.Last().Time : DateTime.MinValue;
