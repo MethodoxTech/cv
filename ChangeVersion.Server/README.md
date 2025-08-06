@@ -1,8 +1,14 @@
 ﻿# ChangeVersion.Server
 
+Notice the server doesn't need to know anything about cv or `RepoStorage` at all, since its only job is to store "the latest". 
+
+What's more, it's not really possible for the server to keep track of accurate date of "last update" time of files - it's more useful to keep an MD5 as checksum for avoiding uploading/downloading the same files.
+
 ## Server Architecture
 
-Server: ASP .NET Core Web API
+Server uses ASP .NET Core minimal web API, without controllers. For authentication, we just use a basic "passcode" as `X-Api-Key` header.
+
+There are a few benefits using ASP.Net Core instead of rolling a custom file server:
 
 1. **Endpoints**
    * `GET  /files`
@@ -26,3 +32,7 @@ Server: ASP .NET Core Web API
    * If you want resume/partial uploads, either:
      * Break files into chunks on the client and `PUT /files/{path}?chunk=…`
      * Adopt an existing protocol like [tus.io](https://tus.io) (there’s a .NET server package)
+
+## References
+
+* For a discussion on server design: https://dev.to/methodox/devlog-20250806-change-version-file-changes-history-only-version-control-for-binary-assets-5hf4
