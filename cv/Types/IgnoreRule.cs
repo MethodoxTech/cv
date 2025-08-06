@@ -2,7 +2,7 @@
 
 namespace cv.Types
 {
-    internal class IgnoreRule
+    public class IgnoreRule
     {
         #region Properties
         private readonly Regex _regex;
