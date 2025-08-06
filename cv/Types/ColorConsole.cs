@@ -39,6 +39,11 @@ namespace cv.Types
         public static void WriteLine(string text)
             => Console.WriteLine(text);
         /// <summary>
+        /// Fall-back to a normal WriteLine.
+        /// </summary>
+        public static void WriteLine()
+            => Console.WriteLine();
+        /// <summary>
         /// Fall-back to a normal Write.
         /// </summary>
         public static void Write(string text)

@@ -24,7 +24,7 @@ namespace cv
                 args[0].Equals("--help", StringComparison.OrdinalIgnoreCase))
             {
                 if (args[0].Equals("-h", StringComparison.OrdinalIgnoreCase))
-                    Console.WriteLine(Color.DarkGreen, $"Usage: cv status|init|commit|log -m <Message>|log");
+                    Console.WriteLine(Color.DarkGreen, $"Usage: cv status|init|list|commit|log -m <Message>|log");
                 else
                     PrintDetailedHelp();
                 return;
@@ -48,6 +48,9 @@ namespace cv
                     break;
                 case "init":
                     tool.Init();
+                    break;
+                case "list":
+                    tool.List();
                     break;
                 case "commit":
                     if (args.Length != 3)
@@ -77,6 +80,7 @@ namespace cv
                 Commands:
                   init               Initialize a new cv repo in the current directory
                   status             Show uncommitted file changes (like `git status`)
+                  list               Show all tracked files (and any uncommitted changes)
                   commit -m <msg>    Commit current changes with message <msg>
                   log                Show commit history
 

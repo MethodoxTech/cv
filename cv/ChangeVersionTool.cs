@@ -145,6 +145,52 @@ namespace cv
                 Console.WriteLine(Color.DarkGray, file.UpdateTime.ToLocalTime());
             }
         }
+        /// <summary>
+        /// List all tracked files, and show any uncommitted changes.
+        /// </summary>
+        public void List()
+        {
+            if (!Directory.Exists(RepoControlFolderName))
+            {
+                Console.WriteLine(Color.Red, "No repo exists at current location");
+                return;
+            }
+
+            // Load tracked files
+            RepoStorage storage = SerializationHelper.DeserializeFromFile(StorageFilePath);
+            List<string> tracked = storage
+                .GetLatestFiles()
+                .Keys
+                .OrderBy(p => p)
+                .ToList();
+
+            Console.WriteLine(Color.Cyan, "# Tracked files:");
+            foreach (string? path in tracked)
+                Console.WriteLine(Color.White, path);
+
+            // Compute any pending changes
+            Changelist changes = GetChanges();
+            bool hasChanges =
+                changes.NewFiles.Any() ||
+                changes.UpdatedFiles.Any() ||
+                changes.MovedFiles.Any() ||
+                changes.DeletedFiles.Any();
+
+            if (hasChanges)
+            {
+                Console.WriteLine();
+                Console.WriteLine(Color.Goldenrod, "# Uncommitted changes:");
+
+                foreach (FileChange f in changes.NewFiles)
+                    Console.WriteLine(Color.Green, $"New:     {f.Path}");
+                foreach (FileChange f in changes.UpdatedFiles)
+                    Console.WriteLine(Color.YellowGreen, $"Updated: {f.Path}");
+                foreach (FileChange f in changes.MovedFiles)
+                    Console.WriteLine(Color.SkyBlue, $"Moved:   {f.Path} → {f.NewPath}");
+                foreach (FileChange f in changes.DeletedFiles)
+                    Console.WriteLine(Color.DarkRed, $"Deleted: {f.Path}");
+            }
+        }
         #endregion
 
         #region Routines
