@@ -4,6 +4,10 @@ Change Version is a cli tool that provides quick check against a repo's changes 
 
 This is useful for cases when we DO NOT want to do version control yet would still want the capability to see which files has changed, as in the case of multimedia projects (e.g. game projects).
 
+**Dependency and Platform**
+
+This program utilizes standard .Net 8 and can be compiled to any native environment. The published releases only contains Windows-only builds but may add Linux builds in the future. To compile for other platforms, download .Net 8 SDK and build accordingly. Publish AoT is expected in a future update.
+
 ## Usage
 
 The utility supports the following commands:
@@ -23,6 +27,3 @@ cv uses a .cvignore file, which shares the same .gitignore file as git, this is 
 
 At the moment cv just checks whether the beginning of paths match that as specified in .cvignore file - no wildcards is supported. You are welcome to make a PR in [this function](https://github.com/chaojian-zhang/cv/blob/91f711abcf1ba6d6a37ab8d3dc9c2d79ee694cc9/Program.cs#L344) to complete the implementation.
 
-## Dependency and Platform
-
-This program utilizes standard Net 6 and can be compiled to any native environment. The published releases only contains Windows-only builds for obvious reasons. To compile for other platforms, download .Net 6 SDK and build accordingly.
