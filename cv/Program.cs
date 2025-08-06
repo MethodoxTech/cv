@@ -1,5 +1,10 @@
-﻿using System.Drawing;
+﻿using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.IO;
+using System.Linq;
 using Console = Colorful.Console;
+
 namespace cv
 {
     public class FileChange
@@ -22,29 +27,33 @@ namespace cv
 
     public class Changelist
     {
-        public List<FileChange> NewFiles = new List<FileChange>();
-        public List<FileChange> UpdatedFiles = new List<FileChange>();
-        public List<FileChange> DeletedFiles = new List<FileChange>();
-        public List<FileChange> MovedFiles = new List<FileChange>();
+        public List<FileChange> NewFiles = [];
+        public List<FileChange> UpdatedFiles = [];
+        public List<FileChange> DeletedFiles = [];
+        public List<FileChange> MovedFiles = [];
     }
     public class RepoStorage
     {
+        #region Subtypes
         public class Commit
         {
-            public List<FileChange> Changes = new ();
-            public string Message;
+            public List<FileChange> Changes = [];
+            public string Message = string.Empty;
             public DateTime Time;
         }
+        #endregion
 
-        public List<Commit> Commits = new List<Commit>();
+        #region Properties
+        public List<Commit> Commits = [];
+        #endregion
 
         #region Helper Accessor
         public Dictionary<string, (DateTime UpdateTime, DateTime CreationTime)> GetLatestFiles()
         {
-            Dictionary<string, (DateTime UpdateTime, DateTime CreationTime)> files = new ();
-            foreach (var commit in Commits)
+            Dictionary<string, (DateTime UpdateTime, DateTime CreationTime)> files = [];
+            foreach (Commit commit in Commits)
             {
-                foreach (var fileChange in commit.Changes)
+                foreach (FileChange fileChange in commit.Changes)
                 {
                     switch (fileChange.ChangeType)
                     {
@@ -77,9 +86,7 @@ namespace cv
         {
             string directory = RepoRootPath;
             if (args.Length == 0)
-            {
                 Console.WriteLine($"Usage: cv status|init|commit|log -m <Message>|log", Color.DarkGreen);
-            }
             else
             {
                 string action = args[0].ToLower();
@@ -114,7 +121,7 @@ namespace cv
                 return;
             }
 
-            var storage = new YamlDotNet.Serialization.Deserializer().Deserialize<RepoStorage>(File.ReadAllText(RepoStorageFilePath));
+            RepoStorage storage = new YamlDotNet.Serialization.Deserializer().Deserialize<RepoStorage>(File.ReadAllText(RepoStorageFilePath));
             for (int i = 0; i < storage.Commits.Count; i++)
             {
                 RepoStorage.Commit commit = storage.Commits[i];
@@ -130,10 +137,10 @@ namespace cv
                 Console.WriteLine("No repo exists at current location", Color.Red);
             else
             {
-                var changes = GetChanges();
+                Changelist changes = GetChanges();
 
-                var storage = new YamlDotNet.Serialization.Deserializer().Deserialize<RepoStorage>(File.ReadAllText(RepoStorageFilePath));
-                var allChanges = changes.DeletedFiles
+                RepoStorage storage = new YamlDotNet.Serialization.Deserializer().Deserialize<RepoStorage>(File.ReadAllText(RepoStorageFilePath));
+                List<FileChange> allChanges = changes.DeletedFiles
                     .Union(changes.UpdatedFiles)
                     .Union(changes.MovedFiles)
                     .Union(changes.NewFiles) // Order matters, we must union DeletedFiles first because in the case of FileChangeType.Recreate, we want to maintain that relation
@@ -177,9 +184,9 @@ namespace cv
                 return;
             }
 
-            var changes = GetChanges();
+            Changelist changes = GetChanges();
             Console.WriteLine($"# New: {changes.NewFiles.Count}", Color.Goldenrod);
-            foreach (var file in changes.NewFiles)
+            foreach (FileChange file in changes.NewFiles)
             {
                 Console.Write($"{file.Path} ", Color.Green);
                 if (file.ChangeType == FileChange.FileChangeType.Recreated)
@@ -192,14 +199,14 @@ namespace cv
             }
 
             Console.WriteLine($"# Updated: {changes.UpdatedFiles.Count}", Color.Goldenrod);
-            foreach (var file in changes.UpdatedFiles)
+            foreach (FileChange file in changes.UpdatedFiles)
             {
                 Console.Write($"{file.Path} ", Color.YellowGreen);
                 Console.WriteLine(file.UpdateTime.ToLocalTime(), Color.DarkGray);
             }
 
             Console.WriteLine($"# Moved: {changes.MovedFiles.Count}", Color.Goldenrod);
-            foreach (var file in changes.MovedFiles)
+            foreach (FileChange file in changes.MovedFiles)
             {
                 Console.Write($"{file.Path} ", Color.SkyBlue);
                 Console.Write($"-> ", Color.Yellow);
@@ -208,7 +215,7 @@ namespace cv
             }
 
             Console.WriteLine($"# Deleted: {changes.DeletedFiles.Count}", Color.Goldenrod);
-            foreach (var file in changes.DeletedFiles)
+            foreach (FileChange file in changes.DeletedFiles)
             {
                 Console.Write($"{file.Path} ", Color.DarkRed);
                 Console.WriteLine(file.UpdateTime.ToLocalTime(), Color.DarkGray);
@@ -223,12 +230,12 @@ namespace cv
             if (!Directory.Exists(RepoControlFolderName))
                 throw new InvalidOperationException("Must be inside a CV repo.");
 
-            var storage = new YamlDotNet.Serialization.Deserializer().Deserialize<RepoStorage>(File.ReadAllText(RepoStorageFilePath));
-            var latest = storage.GetLatestFiles();
-            var actual = GetActualFiles();
-            var lastCommit = storage.Commits.Count > 0 ? storage.Commits.Last().Time : DateTime.MinValue;
+            RepoStorage storage = new YamlDotNet.Serialization.Deserializer().Deserialize<RepoStorage>(File.ReadAllText(RepoStorageFilePath));
+            Dictionary<string, (DateTime UpdateTime, DateTime CreationTime)> latest = storage.GetLatestFiles();
+            Dictionary<string, DateTime> actual = GetActualFiles();
+            DateTime lastCommit = storage.Commits.Count > 0 ? storage.Commits.Last().Time : DateTime.MinValue;
 
-            Changelist changes = new Changelist();
+            Changelist changes = new();
             foreach ((string relativePath, DateTime updateTime) in actual)
             {
                 // New files
@@ -301,7 +308,7 @@ namespace cv
                 }
             }
             // Deleted files
-            foreach (var item in latest)
+            foreach (KeyValuePair<string, (DateTime UpdateTime, DateTime CreationTime)> item in latest)
                 changes.DeletedFiles.Add(new FileChange()
                 {
                     ChangeType = FileChange.FileChangeType.Deleted,
@@ -320,20 +327,20 @@ namespace cv
             if (File.Exists(IgnoreFilename))
                 ignoreRules = File.ReadAllLines(IgnoreFilename).Where(l => !string.IsNullOrWhiteSpace(l) && !l.Trim().StartsWith('#')).ToArray();
 
-            Dictionary<string, DateTime> entries = new Dictionary<string, DateTime>();
+            Dictionary<string, DateTime> entries = [];
             EnumerateAndAddFileEntry(RepoRootPath);
             return entries;
 
             void EnumerateAndAddFileEntry(string currentFolder)
             {
-                foreach (var subFolder in Directory.EnumerateDirectories(currentFolder))
+                foreach (string subFolder in Directory.EnumerateDirectories(currentFolder))
                 {
                     if (currentFolder == RepoRootPath && Path.GetFileName(subFolder) == RepoControlFolderName)
                         continue;
                     else
                         EnumerateAndAddFileEntry(subFolder);
                 }
-                foreach (var file in Directory.EnumerateFiles(currentFolder))
+                foreach (string file in Directory.EnumerateFiles(currentFolder))
                 {
                     string relativePath = Path.GetRelativePath(RepoRootPath, file).Replace('\\', '/');
                     if (ignoreRules == null || !ShouldIgnore(ignoreRules, relativePath))
@@ -342,9 +349,7 @@ namespace cv
             }
         }
         private static bool ShouldIgnore(string[] rules, string path)
-        {
-            return rules.Any(r => path.StartsWith(r));
-        }
+            => rules.Any(path.StartsWith);
         #endregion
 
         private static string RepoRootPath = Directory.GetCurrentDirectory();
