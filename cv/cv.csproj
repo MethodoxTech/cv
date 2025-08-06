@@ -6,6 +6,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PublishReadyToRun>true</PublishReadyToRun>
+    <Version>1.0.3</Version>
   </PropertyGroup>
 
   <ItemGroup>

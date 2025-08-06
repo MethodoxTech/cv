@@ -1,4 +1,5 @@
-﻿using System;
+﻿using cv.Types;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -7,112 +8,88 @@ using Console = Colorful.Console;
 
 namespace cv
 {
-    public class FileChange
-    {
-        public enum FileChangeType
-        {
-            New,    // Completely new
-            Updated, // Same path, different update time
-            Deleted, // No longer exist at path
-            Moved,   // Save file save name save creation date somewhere else
-            Recreated, // Deleted then recreated with the same path
-        }
-
-        public FileChangeType ChangeType;
-        public string Path; // All paths are relative
-        public string NewPath;  // Contains creation time if it's new file, otherwise it contains new path if the file was moved
-        public DateTime UpdateTime;
-        public long Size;
-    }
-
-    public class Changelist
-    {
-        public List<FileChange> NewFiles = [];
-        public List<FileChange> UpdatedFiles = [];
-        public List<FileChange> DeletedFiles = [];
-        public List<FileChange> MovedFiles = [];
-    }
-    public class RepoStorage
-    {
-        #region Subtypes
-        public class Commit
-        {
-            public List<FileChange> Changes = [];
-            public string Message = string.Empty;
-            public DateTime Time;
-        }
-        #endregion
-
-        #region Properties
-        public List<Commit> Commits = [];
-        #endregion
-
-        #region Helper Accessor
-        public Dictionary<string, (DateTime UpdateTime, DateTime CreationTime)> GetLatestFiles()
-        {
-            Dictionary<string, (DateTime UpdateTime, DateTime CreationTime)> files = [];
-            foreach (Commit commit in Commits)
-            {
-                foreach (FileChange fileChange in commit.Changes)
-                {
-                    switch (fileChange.ChangeType)
-                    {
-                        case FileChange.FileChangeType.New:
-                        case FileChange.FileChangeType.Recreated:
-                            files[fileChange.Path] = (UpdateTime: fileChange.UpdateTime, CreationTime: new DateTime(long.Parse(fileChange.NewPath))); // Remark-cz, 20230820: Notice "NewPath" contains creation time for new/recreated files
-                            break;
-                        case FileChange.FileChangeType.Updated:
-                            files[fileChange.Path] = (UpdateTime: fileChange.UpdateTime, CreationTime: files[fileChange.Path].CreationTime);
-                            break;
-                        case FileChange.FileChangeType.Deleted:
-                            files.Remove(fileChange.Path);
-                            break;
-                        case FileChange.FileChangeType.Moved:
-                            files[fileChange.NewPath] = (UpdateTime: fileChange.UpdateTime, CreationTime: files[fileChange.Path].CreationTime);
-                            files.Remove(fileChange.Path);
-                            break;
-                        default:
-                            break;
-                    }
-                }
-            }
-            return files;
-        }
-        #endregion
-    }
     internal class Program
     {
+        #region Constants
+        private static string RepoRootPath = Directory.GetCurrentDirectory();
+        private const string RepoControlFolderName = ".cv";
+        private const string IgnoreFilename = ".cvignore";
+        private static string RepoStorageFilePath = Path.Combine(RepoControlFolderName, "versions");
+        #endregion
+
+        #region Methods
         static void Main(string[] args)
         {
-            string directory = RepoRootPath;
-            if (args.Length == 0)
-                Console.WriteLine($"Usage: cv status|init|commit|log -m <Message>|log", Color.DarkGreen);
-            else
+            // Print help
+            if (args.Length == 0 ||
+                args[0].Equals("help", StringComparison.OrdinalIgnoreCase) ||
+                args[0].Equals("-h", StringComparison.OrdinalIgnoreCase) ||
+                args[0].Equals("--help", StringComparison.OrdinalIgnoreCase))
             {
-                string action = args[0].ToLower();
-                switch (action)
-                {
-                    case "status":
-                        Status();
-                        break;
-                    case "init":
-                        Init();
-                        break;
-                    case "commit":
-                        if (args.Length != 3)
-                            Console.WriteLine("commit -m <Message>", Color.Red);
-                        else
-                            Commit(args[2]);
-                        break;
-                    case "log":
-                        Log();
-                        break;
-                    default:
-                        break;
-                }
+                if (args[0].Equals("-h", StringComparison.OrdinalIgnoreCase))
+                    Console.WriteLine($"Usage: cv status|init|commit|log -m <Message>|log", Color.DarkGreen);
+                else
+                    PrintDetailedHelp();
+                return;
+            }
+            else if (args.Length == 0 ||
+                args[0].Equals("version", StringComparison.OrdinalIgnoreCase) ||
+                args[0].Equals("-v", StringComparison.OrdinalIgnoreCase) ||
+                args[0].Equals("--version", StringComparison.OrdinalIgnoreCase))
+            {
+                PrintVersion();
+                return;
+            }
+
+            // Take action
+            string action = args[0].ToLower();
+            switch (action)
+            {
+                case "status":
+                    Status();
+                    break;
+                case "init":
+                    Init();
+                    break;
+                case "commit":
+                    if (args.Length != 3)
+                        Console.WriteLine("commit -m <Message>", Color.Red);
+                    else
+                        Commit(args[2]);
+                    break;
+                case "log":
+                    Log();
+                    break;
+                default:
+                    break;
             }
         }
+        #endregion
+
         #region Routines
+        private static void PrintDetailedHelp()
+        {
+            const string helpText = """
+                cv — Change Version CLI
+
+                Usage:
+                  cv <command> [options]
+
+                Commands:
+                  init               Initialize a new cv repo in the current directory
+                  status             Show uncommitted file changes (like `git status`)
+                  commit -m <msg>    Commit current changes with message <msg>
+                  log                Show commit history
+
+                Options:
+                  -h, --help, help   Show this help information
+
+                See also `.cvignore` to exclude files from tracking.
+                """;
+            Console.WriteLine(helpText, Color.Cyan);
+        }
+        private static void PrintVersion()
+            => Console.WriteLine("cv — Change Version CLI v1.0.3");
         private static void Log()
         {
             if (!Directory.Exists(RepoControlFolderName))
@@ -175,7 +152,6 @@ namespace cv
                 Console.WriteLine($"Repo initialized at: {RepoRootPath}", Color.GreenYellow);
             }
         }
-
         private static void Status()
         {
             if (!Directory.Exists(RepoControlFolderName))
@@ -351,10 +327,5 @@ namespace cv
         private static bool ShouldIgnore(string[] rules, string path)
             => rules.Any(path.StartsWith);
         #endregion
-
-        private static string RepoRootPath = Directory.GetCurrentDirectory();
-        private const string RepoControlFolderName = ".cv";
-        private const string IgnoreFilename = ".cvignore";
-        private static string RepoStorageFilePath = Path.Combine(RepoControlFolderName, "versions");
     }
 }
