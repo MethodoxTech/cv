@@ -1,10 +1,10 @@
 ﻿using cv.Types;
 using System;
 using System.Collections.Generic;
-using System.Drawing;
 using System.IO;
 using System.Linq;
-using Console = Colorful.Console;
+using Color = System.Drawing.Color;
+using Console = cv.Types.ColorConsole;
 
 namespace cv
 {
@@ -27,7 +27,7 @@ namespace cv
                 args[0].Equals("--help", StringComparison.OrdinalIgnoreCase))
             {
                 if (args[0].Equals("-h", StringComparison.OrdinalIgnoreCase))
-                    Console.WriteLine($"Usage: cv status|init|commit|log -m <Message>|log", Color.DarkGreen);
+                    Console.WriteLine(Color.DarkGreen, $"Usage: cv status|init|commit|log -m <Message>|log");
                 else
                     PrintDetailedHelp();
                 return;
@@ -53,7 +53,7 @@ namespace cv
                     break;
                 case "commit":
                     if (args.Length != 3)
-                        Console.WriteLine("commit -m <Message>", Color.Red);
+                        Console.WriteLine(Color.Red, "commit -m <Message>");
                     else
                         Commit(args[2]);
                     break;
@@ -86,7 +86,7 @@ namespace cv
 
                 See also `.cvignore` to exclude files from tracking.
                 """;
-            Console.WriteLine(helpText, Color.Cyan);
+            Console.WriteLine(Color.Cyan, helpText);
         }
         private static void PrintVersion()
             => Console.WriteLine("cv — Change Version CLI v1.0.3");
@@ -94,7 +94,7 @@ namespace cv
         {
             if (!Directory.Exists(RepoControlFolderName))
             {
-                Console.WriteLine("No repo exists at current location", Color.Red);
+                Console.WriteLine(Color.Red, "No repo exists at current location");
                 return;
             }
 
@@ -103,15 +103,15 @@ namespace cv
             {
                 RepoStorage.Commit commit = storage.Commits[i];
                 Console.Write($"{i}.".PadRight(3));
-                Console.Write(commit.Time.ToLocalTime().ToString() + " ", Color.Green);
-                Console.WriteLine(commit.Message, Color.White);
+                Console.Write(Color.Green, commit.Time.ToLocalTime().ToString() + " ");
+                Console.WriteLine(Color.White, commit.Message);
             }
-            Console.WriteLine($"{storage.Commits.Count} {(storage.Commits.Count <= 1 ? "commit": "commits")}.", Color.Goldenrod);
+            Console.WriteLine(Color.Goldenrod, $"{storage.Commits.Count} {(storage.Commits.Count <= 1 ? "commit" : "commits")}.");
         }
         private static void Commit(string message)
         {
             if (!Directory.Exists(RepoControlFolderName))
-                Console.WriteLine("No repo exists at current location", Color.Red);
+                Console.WriteLine(Color.Red, "No repo exists at current location");
             else
             {
                 Changelist changes = GetChanges();
@@ -125,7 +125,7 @@ namespace cv
 
                 if (allChanges.Count == 0)
                 {
-                    Console.WriteLine("There is no changed file, are you sure you want to make an empty commit? [Y/N]", Color.Red);
+                    Console.WriteLine(Color.Red, "There is no changed file, are you sure you want to make an empty commit? [Y/N]");
                     string input = Console.ReadLine().Trim().ToLower();
                     if (input == "n" || input == "no" || input == "f")
                         return;
@@ -137,64 +137,64 @@ namespace cv
                     Time = DateTime.Now.ToUniversalTime()
                 });
                 File.WriteAllText(RepoStorageFilePath, new YamlDotNet.Serialization.Serializer().Serialize(storage));
-                Console.WriteLine($"Saved {allChanges.Count} {(allChanges.Count <= 1 ? "file" : "files")}.", Color.Goldenrod);
+                Console.WriteLine(Color.Goldenrod, $"Saved {allChanges.Count} {(allChanges.Count <= 1 ? "file" : "files")}.");
             }
         }
 
         private static void Init()
         {
             if (Directory.Exists(RepoControlFolderName))
-                Console.WriteLine("A CV repo already exists at this location.", Color.Red);
+                Console.WriteLine(Color.Red, "A CV repo already exists at this location.");
             else
             {
                 Directory.CreateDirectory(RepoControlFolderName);
                 File.WriteAllText(RepoStorageFilePath, new YamlDotNet.Serialization.Serializer().Serialize(new RepoStorage()));
-                Console.WriteLine($"Repo initialized at: {RepoRootPath}", Color.GreenYellow);
+                Console.WriteLine(Color.GreenYellow, $"Repo initialized at: {RepoRootPath}");
             }
         }
         private static void Status()
         {
             if (!Directory.Exists(RepoControlFolderName))
             {
-                Console.WriteLine("No repo exists at current location", Color.Red);
+                Console.WriteLine(Color.Red, "No repo exists at current location");
                 return;
             }
 
             Changelist changes = GetChanges();
-            Console.WriteLine($"# New: {changes.NewFiles.Count}", Color.Goldenrod);
+            Console.WriteLine(Color.Goldenrod, $"# New: {changes.NewFiles.Count}");
             foreach (FileChange file in changes.NewFiles)
             {
-                Console.Write($"{file.Path} ", Color.Green);
+                Console.Write(Color.Green, $"{file.Path} ");
                 if (file.ChangeType == FileChange.FileChangeType.Recreated)
                 {
-                    Console.Write(file.UpdateTime.ToLocalTime(), Color.DarkGray);
-                    Console.WriteLine(" [Recreated]", Color.Yellow);
+                    Console.Write(Color.DarkGray, file.UpdateTime.ToLocalTime());
+                    Console.WriteLine(Color.Yellow, " [Recreated]");
                 }
                 else 
-                    Console.WriteLine(file.UpdateTime.ToLocalTime(), Color.DarkGray);
+                    Console.WriteLine(Color.DarkGray, file.UpdateTime.ToLocalTime());
             }
 
-            Console.WriteLine($"# Updated: {changes.UpdatedFiles.Count}", Color.Goldenrod);
+            Console.WriteLine(Color.Goldenrod, $"# Updated: {changes.UpdatedFiles.Count}");
             foreach (FileChange file in changes.UpdatedFiles)
             {
-                Console.Write($"{file.Path} ", Color.YellowGreen);
-                Console.WriteLine(file.UpdateTime.ToLocalTime(), Color.DarkGray);
+                Console.Write(Color.YellowGreen, $"{file.Path} ");
+                Console.WriteLine(Color.DarkGray, file.UpdateTime.ToLocalTime());
             }
 
-            Console.WriteLine($"# Moved: {changes.MovedFiles.Count}", Color.Goldenrod);
+            Console.WriteLine(Color.Goldenrod, $"# Moved: {changes.MovedFiles.Count}");
             foreach (FileChange file in changes.MovedFiles)
             {
-                Console.Write($"{file.Path} ", Color.SkyBlue);
-                Console.Write($"-> ", Color.Yellow);
-                Console.Write($"{file.NewPath} ", Color.SkyBlue);
-                Console.WriteLine(file.UpdateTime.ToLocalTime(), Color.DarkGray);
+                Console.Write(Color.SkyBlue, $"{file.Path} ");
+                Console.Write(Color.Yellow, $"-> ");
+                Console.Write(Color.SkyBlue, $"{file.NewPath} ");
+                Console.WriteLine(Color.DarkGray, file.UpdateTime.ToLocalTime());
             }
 
-            Console.WriteLine($"# Deleted: {changes.DeletedFiles.Count}", Color.Goldenrod);
+            Console.WriteLine(Color.Goldenrod, $"# Deleted: {changes.DeletedFiles.Count}");
             foreach (FileChange file in changes.DeletedFiles)
             {
-                Console.Write($"{file.Path} ", Color.DarkRed);
-                Console.WriteLine(file.UpdateTime.ToLocalTime(), Color.DarkGray);
+                Console.Write(Color.DarkRed, $"{file.Path} ");
+                Console.WriteLine(Color.DarkGray, file.UpdateTime.ToLocalTime());
             }
 
         }
