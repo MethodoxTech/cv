@@ -13,28 +13,40 @@ namespace cv
     [YamlStaticContext]
     [YamlSerializable(typeof(RepoStorage))]
     [YamlSerializable(typeof(RepoStorage.Commit))]
+    [YamlSerializable(typeof(FileChange))]
+    [YamlSerializable(typeof(Changelist))]
+    [YamlSerializable(typeof(FileChange.FileChangeType))]
     public partial class YamlStaticContext : YamlDotNet.Serialization.StaticContext
     {
     }
 
     public static class SerializationHelper
     {
-       public static IDeserializer deserializer = new StaticDeserializerBuilder(new YamlStaticContext())
+        #region Configurations
+        private static IDeserializer _deserializer = new StaticDeserializerBuilder(new YamlStaticContext())
             .WithNamingConvention(PascalCaseNamingConvention.Instance)
             .Build();
-        public static ISerializer serializer = new StaticSerializerBuilder(new YamlStaticContext())
+        private static ISerializer serializer = new StaticSerializerBuilder(new YamlStaticContext())
             .WithNamingConvention(PascalCaseNamingConvention.Instance)
             .EnsureRoundtrip()
             .Build();
+        #endregion
+
+        #region Methods
+        internal static RepoStorage DeserializeFromFile(string repoStorageFilePath)
+            => _deserializer.Deserialize<RepoStorage>(File.ReadAllText(repoStorageFilePath));
+        internal static void SerializeToFile(RepoStorage storage, string repoStorageFilePath)
+            => File.WriteAllText(repoStorageFilePath, serializer.Serialize(storage));
+        #endregion
     }
 
     internal class Program
     {
         #region Constants
-        private static string RepoRootPath = Directory.GetCurrentDirectory();
+        private static readonly string RepoRootPath = Directory.GetCurrentDirectory();
+        private static string RepoStorageFilePath = Path.Combine(RepoControlFolderName, "versions");
         private const string RepoControlFolderName = ".cv";
         private const string IgnoreFilename = ".cvignore";
-        private static string RepoStorageFilePath = Path.Combine(RepoControlFolderName, "versions");
         #endregion
 
         #region Methods
@@ -119,7 +131,7 @@ namespace cv
                 return;
             }
 
-            RepoStorage storage = SerializationHelper.deserializer.Deserialize<RepoStorage>(File.ReadAllText(RepoStorageFilePath));
+            RepoStorage storage = SerializationHelper.DeserializeFromFile(RepoStorageFilePath);
             for (int i = 0; i < storage.Commits.Count; i++)
             {
                 RepoStorage.Commit commit = storage.Commits[i];
@@ -137,7 +149,7 @@ namespace cv
             {
                 Changelist changes = GetChanges();
 
-                RepoStorage storage = SerializationHelper.deserializer.Deserialize<RepoStorage>(File.ReadAllText(RepoStorageFilePath));
+                RepoStorage storage = SerializationHelper.DeserializeFromFile(RepoStorageFilePath);
                 List<FileChange> allChanges = changes.DeletedFiles
                     .Union(changes.UpdatedFiles)
                     .Union(changes.MovedFiles)
@@ -157,7 +169,7 @@ namespace cv
                     Message = message,
                     Time = DateTime.Now.ToUniversalTime()
                 });
-                File.WriteAllText(RepoStorageFilePath, SerializationHelper.serializer.Serialize(storage));
+                SerializationHelper.SerializeToFile(storage, RepoStorageFilePath);
                 Console.WriteLine(Color.Goldenrod, $"Saved {allChanges.Count} {(allChanges.Count <= 1 ? "file" : "files")}.");
             }
         }
@@ -169,7 +181,7 @@ namespace cv
             else
             {
                 Directory.CreateDirectory(RepoControlFolderName);
-                File.WriteAllText(RepoStorageFilePath, SerializationHelper.serializer.Serialize(new RepoStorage()));
+                SerializationHelper.SerializeToFile(new RepoStorage(), RepoStorageFilePath);
                 Console.WriteLine(Color.GreenYellow, $"Repo initialized at: {RepoRootPath}");
             }
         }
@@ -227,7 +239,7 @@ namespace cv
             if (!Directory.Exists(RepoControlFolderName))
                 throw new InvalidOperationException("Must be inside a CV repo.");
 
-            RepoStorage storage = SerializationHelper.deserializer.Deserialize<RepoStorage>(File.ReadAllText(RepoStorageFilePath));
+            RepoStorage storage = SerializationHelper.DeserializeFromFile(RepoStorageFilePath);
             Dictionary<string, (DateTime UpdateTime, DateTime CreationTime)> latest = storage.GetLatestFiles();
             Dictionary<string, DateTime> actual = GetActualFiles();
             DateTime lastCommit = storage.Commits.Count > 0 ? storage.Commits.Last().Time : DateTime.MinValue;
@@ -317,7 +329,6 @@ namespace cv
 
             return changes;
         }
-
         private static Dictionary<string, DateTime> GetActualFiles()
         {
             string[] ignoreRules = null;
