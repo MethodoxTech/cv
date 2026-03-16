@@ -4,48 +4,71 @@ namespace cv.Types
 {
     public class IgnoreRule
     {
-        #region Properties
-        private readonly Regex _regex;
+        public string Pattern { get; }
         public bool IsNegation { get; }
-        #endregion
 
-        #region Construction
+        private readonly Regex _regex;
+
         public IgnoreRule(string pattern)
         {
-            // !foo to unignore
             if (pattern.StartsWith('!'))
             {
                 IsNegation = true;
                 pattern = pattern[1..];
             }
 
-            // if pattern starts with '/', anchor at repo root
+            pattern = pattern.Replace('\\', '/').Trim();
+
             bool anchored = pattern.StartsWith('/');
-            if (anchored) 
+            if (anchored)
                 pattern = pattern[1..];
 
-            // Convert git‐style glob to regex
+            bool directoryOnly = pattern.EndsWith('/');
+            if (directoryOnly)
+                pattern = pattern[..^1];
+
+            bool hasSlash = pattern.Contains('/');
+
+            string regexBody = Regex.Escape(pattern)
+                .Replace(@"\*\*/", @"(.*/)?")
+                .Replace(@"\*\*", @".*")
+                .Replace(@"\*", @"[^/]*")
+                .Replace(@"\?", @"[^/]");
+
+            string prefix;
+            if (anchored)
+            {
+                // Must match from repo root
+                prefix = "^";
+            }
+            else if (hasSlash)
+            {
+                // Unanchored pattern containing slash can match anywhere
+                prefix = @"^(?:.*/)?";
+            }
+            else
+            {
+                // Bare name like "bin" or "obj" matches any path segment
+                prefix = @"^(?:|.*/)";
+            }
+
+            string suffix = directoryOnly
+                ? @"(?:/.*)?$"   // directory and everything under it
+                : hasSlash || anchored
+                    ? @"(?:$|/.*$)" // exact path or children if directory
+                    : @"(?:$|/.*$)"; // bare segment or anything under it
+
             _regex = new Regex(
-                "^" +
-                Regex.Escape(pattern)
-                     // Treat "**/" specially
-                     .Replace(@"\*\*/", "(@@SLUG@@/)")
-                     .Replace(@"\*\*", ".*")
-                     .Replace(@"\*", @"[^/]*")
-                     .Replace(@"\?", @"[^/]")
-                     .Replace("@@SLUG@@", ".*") +
-                (anchored ? "$" : "(?:$|/)"),
+                prefix + regexBody + suffix,
                 RegexOptions.Compiled | RegexOptions.IgnoreCase
             );
-        }
-        #endregion
 
-        #region Methods
+            Pattern = pattern;
+        }
         public bool IsMatch(string path, string repoRoot)
         {
-            // If rule was anchored, path is already relative to repoRoot
+            path = path.Replace('\\', '/').TrimStart('/');
             return _regex.IsMatch(path);
         }
-        #endregion
     }
 }

@@ -383,7 +383,7 @@ namespace cv
                     string relativeFolder = Path.GetRelativePath(RootPath, subFolder).Replace('\\', '/');
 
                     // Skip control folder
-                    if (currentFolder == RootPath && relativeFolder == RepoControlFolderName)
+                    if (currentFolder == RootPath && string.Equals(Path.GetFileName(subFolder), RepoControlFolderName, StringComparison.OrdinalIgnoreCase))
                         continue;
 
                     // If the ignore rules say to ignore this directory, don't even recurse into it
