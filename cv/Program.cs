@@ -96,6 +96,8 @@ namespace cv
                   list               Show all tracked files (and any uncommitted changes)
                   commit -m <msg>    Commit current changes with message <msg>
                   log                Show commit history
+                  gather <output folder> Gather version controlled files to a folder
+                  archive <output path>  Gather version controlled files to an archive
                   push <url> <key>   Upload new/updated files to cv-server
                   pull <url> <key>   Download latest files from cv-server
 
@@ -109,7 +111,7 @@ namespace cv
             Console.WriteLine(Color.Goldenrod, helpText);
         }
         private static void PrintVersion()
-            => Console.WriteLine("cv — Change Version CLI v1.0.4");
+            => Console.WriteLine("cv — Change Version CLI v1.0.5");
         #endregion
     }
 }
