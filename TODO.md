@@ -4,6 +4,14 @@ Add TODO file here to avoid the main README looking clustered.
 
 ## TODO
 
+Ignore File: (Expect another dedicated 3hr (without AI assistance) to get ignore working well)
+
+- [ ] Currently `obj`, `bin` etc. is not able to ignore such folders in subfolder paths.
+- [ ] `cv status` performance with large folders sucks right now.
+- [ ] Replace custom matching with FileSystemGlobbing: https://learn.microsoft.com/en-us/dotnet/api/microsoft.extensions.filesystemglobbing.matcher?view=net-9.0-pp and https://learn.microsoft.com/en-us/dotnet/core/extensions/file-globbing
+- [ ] Include explicit .cvinclude file (also maps to Microsoft Matcher well), default * for all files.
+- [ ] For the dev log, we could add a screenshot of CV status outputs for clarity.
+
 File synching:
 
 - [ ] For push/pull, enable checking against server files and download only the needed files.

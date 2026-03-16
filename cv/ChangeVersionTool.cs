@@ -2,7 +2,7 @@
 using cv.Types;
 using System;
 using System.Collections.Generic;
-using System.Drawing;
+using System.Data;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -368,21 +368,31 @@ namespace cv
         /// </summary>
         private Dictionary<string, DateTime> GetActualFiles()
         {
-            List<IgnoreRule> ignoreRules = ReadIgnoreRules();
-
             Dictionary<string, DateTime> entries = [];
             EnumerateAndAddFileEntry(RootPath);
             return entries;
 
             void EnumerateAndAddFileEntry(string currentFolder)
             {
+                List<IgnoreRule> ignoreRules = ReadIgnoreRules();
+
+                // Recurse into subfolders unless ignored
                 foreach (string subFolder in Directory.EnumerateDirectories(currentFolder))
                 {
-                    if (currentFolder == RootPath && Path.GetFileName(subFolder) == RepoControlFolderName)
+                    // Compute the relative path for matching
+                    string relativeFolder = Path.GetRelativePath(RootPath, subFolder).Replace('\\', '/');
+
+                    // Skip control folder
+                    if (currentFolder == RootPath && relativeFolder == RepoControlFolderName)
                         continue;
-                    else
-                        EnumerateAndAddFileEntry(subFolder);
+
+                    // If the ignore rules say to ignore this directory, don't even recurse into it
+                    if (ShouldIgnore(ignoreRules, relativeFolder))
+                        continue;
+
+                    EnumerateAndAddFileEntry(subFolder);
                 }
+                // Enumerate files in non‐ignored folders
                 foreach (string file in Directory.EnumerateFiles(currentFolder))
                 {
                     string relativePath = Path.GetRelativePath(RootPath, file).Replace('\\', '/');
