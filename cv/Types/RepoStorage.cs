@@ -8,14 +8,14 @@ namespace cv.Types
         #region Subtypes
         public class Commit
         {
-            public List<FileChange> Changes = [];
-            public string Message = string.Empty;
-            public DateTime Time;
+            public List<FileChange> Changes { get; set; } = [];
+            public string Message { get; set; } = string.Empty;
+            public DateTime Time { get; set; }
         }
         #endregion
 
         #region Properties
-        public List<Commit> Commits = [];
+        public List<Commit> Commits { get; set; } = [];
         #endregion
 
         #region Helper Accessor

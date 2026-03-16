@@ -2,6 +2,7 @@
 using YamlDotNet.Serialization.NamingConventions;
 using YamlDotNet.Serialization;
 using System.IO;
+using System.Reflection.Metadata.Ecma335;
 
 namespace cv.Serialization
 {
@@ -19,7 +20,9 @@ namespace cv.Serialization
 
         #region Methods
         internal static RepoStorage DeserializeFromFile(string repoStorageFilePath)
-            => _deserializer.Deserialize<RepoStorage>(File.ReadAllText(repoStorageFilePath));
+            => File.Exists(repoStorageFilePath)
+            ? _deserializer.Deserialize<RepoStorage>(File.ReadAllText(repoStorageFilePath))
+            : new();
         internal static void SerializeToFile(RepoStorage storage, string repoStorageFilePath)
             => File.WriteAllText(repoStorageFilePath, serializer.Serialize(storage));
         #endregion

@@ -14,17 +14,17 @@ namespace cv.Types
             Recreated, // Deleted then recreated with the same path
         }
 
-        public FileChangeType ChangeType;
-        public string Path; // All paths are relative
-        public string NewPath;  // Contains creation time if it's new file, otherwise it contains new path if the file was moved
-        public DateTime UpdateTime;
-        public long Size;
+        public FileChangeType ChangeType { get; set; }
+        public string Path { get; set; } // All paths are relative
+        public string NewPath { get; set; }  // Contains creation time if it's new file, otherwise it contains new path if the file was moved
+        public DateTime UpdateTime { get; set; }
+        public long Size { get; set; }
     }
     public class Changelist
     {
-        public List<FileChange> NewFiles = [];
-        public List<FileChange> UpdatedFiles = [];
-        public List<FileChange> DeletedFiles = [];
-        public List<FileChange> MovedFiles = [];
+        public List<FileChange> NewFiles { get; set; } = [];
+        public List<FileChange> UpdatedFiles { get; set; } = [];
+        public List<FileChange> DeletedFiles { get; set; } = [];
+        public List<FileChange> MovedFiles { get; set; } = [];
     }
 }
