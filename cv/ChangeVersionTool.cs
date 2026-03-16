@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -149,7 +150,8 @@ namespace cv
             }
         }
         /// <summary>
-        /// List all tracked files, and show any uncommitted changes.
+        /// List all tracked files. If a tracked file is physically missing, show [Missing].
+        /// Also shows uncommitted changes.
         /// </summary>
         public void List()
         {
@@ -168,8 +170,17 @@ namespace cv
                 .ToList();
 
             Console.WriteLine(Color.Cyan, "# Tracked files:");
-            foreach (string? path in tracked)
-                Console.WriteLine(Color.White, path);
+            foreach (string path in tracked)
+            {
+                string fullPath = Path.Combine(RootPath, path);
+                if (File.Exists(fullPath))
+                    Console.WriteLine(Color.White, path);
+                else
+                {
+                    Console.Write(Color.White, path);
+                    Console.WriteLine(Color.Yellow, " [Missing]");
+                }
+            }
 
             // Compute any pending changes
             Changelist changes = GetChanges();

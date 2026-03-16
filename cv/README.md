@@ -13,6 +13,7 @@ The utility supports the following version control commands:
 - `init`
 - `status`
 - `log`
+- `list`
 - `commit -m <Message>`
 
 Client/server commands:
@@ -22,7 +23,6 @@ Client/server commands:
 
 File operation commands:
 
-- `list`
 - `gather <output folder>`
 - `archive <output path>`
 
