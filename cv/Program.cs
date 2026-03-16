@@ -62,6 +62,18 @@ namespace cv
                 case "log":
                     tool.Log();
                     break;
+                case "gather":
+                    if (args.Length < 2)
+                        Console.WriteLine(Color.Red, "Usage: gather <output folder>");
+                    else
+                        tool.Gather(args[1]);
+                    break;
+                case "archive":
+                    if (args.Length < 2)
+                        Console.WriteLine(Color.Red, "Usage: archive <output zip file>");
+                    else
+                        tool.Archive(args[1]);
+                    break;
                 case "push":
                     if (args.Length != 3)
                         Console.WriteLine(Color.Red, "Usage: cv push <serverUrl> <apiKey>");
