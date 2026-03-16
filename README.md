@@ -10,7 +10,7 @@ Manual ouptut, self-contained single file with trim but no aot (depends on yaml 
 
 ## Parcel NExT Dependencies
 
-As of v1.0.5 we don't depend on Parcel NExT yet and should try to keep it that way.
+As of v1.0.6 we don't depend on Parcel NExT yet and should try to keep it that way.
 
 ## References
 

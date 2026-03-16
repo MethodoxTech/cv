@@ -111,7 +111,7 @@ namespace cv
             Console.WriteLine(Color.Goldenrod, helpText);
         }
         private static void PrintVersion()
-            => Console.WriteLine("cv — Change Version CLI v1.0.5");
+            => Console.WriteLine("cv — Change Version CLI v1.0.6");
         #endregion
     }
 }
