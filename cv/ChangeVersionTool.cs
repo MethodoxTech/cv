@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -149,7 +150,8 @@ namespace cv
             }
         }
         /// <summary>
-        /// List all tracked files, and show any uncommitted changes.
+        /// List all tracked files. If a tracked file is physically missing, show [Missing].
+        /// Also shows uncommitted changes.
         /// </summary>
         public void List()
         {
@@ -168,8 +170,17 @@ namespace cv
                 .ToList();
 
             Console.WriteLine(Color.Cyan, "# Tracked files:");
-            foreach (string? path in tracked)
-                Console.WriteLine(Color.White, path);
+            foreach (string path in tracked)
+            {
+                string fullPath = Path.Combine(RootPath, path);
+                if (File.Exists(fullPath))
+                    Console.WriteLine(Color.White, path);
+                else
+                {
+                    Console.Write(Color.White, path);
+                    Console.WriteLine(Color.Yellow, " [Missing]");
+                }
+            }
 
             // Compute any pending changes
             Changelist changes = GetChanges();
@@ -193,6 +204,143 @@ namespace cv
                 foreach (FileChange f in changes.DeletedFiles)
                     Console.WriteLine(Color.DarkRed, $"Deleted: {f.Path}");
             }
+        }
+        /// <summary>
+        /// Copy all currently tracked files into an empty destination folder, preserving folder structure.
+        /// </summary>
+        public void Gather(string outputFolder)
+        {
+            if (!Directory.Exists(RepoControlFolderName))
+            {
+                Console.WriteLine(Color.Red, "No repo exists at current location");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(outputFolder))
+            {
+                Console.WriteLine(Color.Red, "Output folder is required.");
+                return;
+            }
+
+            string fullOutputFolder = Path.GetFullPath(outputFolder);
+
+            if (File.Exists(fullOutputFolder))
+            {
+                Console.WriteLine(Color.Red, "Output path points to a file, not a folder.");
+                return;
+            }
+
+            if (Directory.Exists(fullOutputFolder))
+            {
+                bool isEmpty = !Directory.EnumerateFileSystemEntries(fullOutputFolder).Any();
+                if (!isEmpty)
+                {
+                    Console.WriteLine(Color.Red, "Destination folder must be empty.");
+                    return;
+                }
+            }
+            else
+            {
+                Directory.CreateDirectory(fullOutputFolder);
+            }
+
+            RepoStorage storage = SerializationHelper.DeserializeFromFile(StorageFilePath);
+            List<string> tracked = storage
+                .GetLatestFiles()
+                .Keys
+                .OrderBy(p => p)
+                .ToList();
+
+            List<string> missingFiles = tracked
+                .Where(p => !File.Exists(Path.Combine(RootPath, p)))
+                .ToList();
+
+            if (missingFiles.Count > 0)
+            {
+                Console.WriteLine(Color.Red, "Cannot gather because some tracked files are missing:");
+                foreach (string missing in missingFiles)
+                    Console.WriteLine(Color.Yellow, missing);
+                return;
+            }
+
+            foreach (string relativePath in tracked)
+            {
+                string sourcePath = Path.Combine(RootPath, relativePath);
+                string destinationPath = Path.Combine(fullOutputFolder, relativePath);
+
+                string? destinationDirectory = Path.GetDirectoryName(destinationPath);
+                if (!string.IsNullOrEmpty(destinationDirectory))
+                    Directory.CreateDirectory(destinationDirectory);
+
+                File.Copy(sourcePath, destinationPath, overwrite: false);
+                Console.WriteLine(Color.Green, $"Gathered {relativePath}");
+            }
+
+            Console.WriteLine(Color.GreenYellow, $"Gather complete: {fullOutputFolder}");
+        }
+        /// <summary>
+        /// Archive all currently tracked files into a zip file.
+        /// </summary>
+        public void Archive(string outputZipFile)
+        {
+            if (!Directory.Exists(RepoControlFolderName))
+            {
+                Console.WriteLine(Color.Red, "No repo exists at current location");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(outputZipFile))
+            {
+                Console.WriteLine(Color.Red, "Output zip file is required.");
+                return;
+            }
+
+            string fullZipPath = Path.GetFullPath(outputZipFile);
+            if (Directory.Exists(fullZipPath))
+            {
+                Console.WriteLine(Color.Red, "Output zip path points to a folder, not a file.");
+                return;
+            }
+
+            // Create destination folder path
+            string? zipDirectory = Path.GetDirectoryName(fullZipPath);
+            if (!string.IsNullOrEmpty(zipDirectory))
+                Directory.CreateDirectory(zipDirectory);
+
+            if (File.Exists(fullZipPath))
+            {
+                Console.WriteLine(Color.Red, "Output zip file already exists.");
+                return;
+            }
+
+            RepoStorage storage = SerializationHelper.DeserializeFromFile(StorageFilePath);
+            List<string> tracked = storage
+                .GetLatestFiles()
+                .Keys
+                .OrderBy(p => p)
+                .ToList();
+
+            List<string> missingFiles = tracked
+                .Where(p => !File.Exists(Path.Combine(RootPath, p)))
+                .ToList();
+
+            if (missingFiles.Count > 0)
+            {
+                Console.WriteLine(Color.Red, "Cannot archive because some tracked files are missing:");
+                foreach (string missing in missingFiles)
+                    Console.WriteLine(Color.Yellow, missing);
+                return;
+            }
+
+            using ZipArchive archive = ZipFile.Open(fullZipPath, ZipArchiveMode.Create);
+            foreach (string relativePath in tracked)
+            {
+                string sourcePath = Path.Combine(RootPath, relativePath);
+                archive.CreateEntryFromFile(sourcePath, relativePath, CompressionLevel.Optimal);
+                Console.WriteLine(Color.Green, $"Archived {relativePath}");
+            }
+
+            Console.WriteLine(Color.GreenYellow, $"Archive created: {fullZipPath}");
         }
         #endregion
 
