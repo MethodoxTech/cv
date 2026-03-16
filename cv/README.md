@@ -1,5 +1,7 @@
 # Change Version (CLI)
 
+Version: v1.0.4
+
 **Dependency and Platform**
 
 This program utilizes standard .Net 8 and can be compiled to any native environment. The published releases only contains Windows-only builds but may add Linux builds in the future. To compile for other platforms, download .Net 8 SDK and build accordingly. Publish AoT is expected in a future update.
@@ -20,10 +22,13 @@ Client/server commands:
 
 File operation commands:
 
+- `list`
 - `gather <output folder>`
 - `archive <output path>`
 
 ## Generated Folders & Files
+
+Notice we could have adopted an opt-in scheme to make "just include those files" easier - but to be familiar with git, we chose an opt-out scheme (aka. ignore files), so let's stick with it.
 
 ### `.cv`
 
@@ -74,4 +79,4 @@ Changelog:
 
 * v1.0.3: Modernize.
 * v1.0.4: Add syncing functions.
-* v1.0.5: Update ignore rule to ignore all matching folders.
+* v1.0.5: Update ignore rule to ignore all matching folders. Fix serialization issue.
