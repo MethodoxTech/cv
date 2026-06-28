@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace cv.Types
+namespace CheckVersion.Types
 {
     public class FileChange
     {

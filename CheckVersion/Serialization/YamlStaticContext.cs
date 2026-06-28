@@ -1,7 +1,7 @@
-﻿using cv.Types;
+﻿using CheckVersion.Types;
 using YamlDotNet.Serialization;
 
-namespace cv.Serialization
+namespace CheckVersion.Serialization
 {
     [YamlStaticContext]
     [YamlSerializable(typeof(RepoStorage))]

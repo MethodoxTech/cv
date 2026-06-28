@@ -23,7 +23,7 @@ namespace CheckVersion.Server
                 return Task.FromResult(AuthenticateResult.Fail("Invalid API Key"));
 
             // Create a trivial authenticated user
-            Claim[] claims = new[] { new Claim(ClaimTypes.Name, "cv-client") };
+            Claim[] claims = new[] { new Claim(ClaimTypes.Name, "CheckVersion-client") };
             ClaimsIdentity identity = new ClaimsIdentity(claims, Scheme.Name);
             ClaimsPrincipal principal = new ClaimsPrincipal(identity);
             AuthenticationTicket ticket = new AuthenticationTicket(principal, Scheme.Name);

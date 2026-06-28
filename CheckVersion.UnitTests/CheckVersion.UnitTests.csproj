@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\cv\cv.csproj" />
+    <ProjectReference Include="..\CheckVersion\CheckVersion.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,6 +1,8 @@
 ﻿# CheckVersion.Server
 
-Notice the server doesn't need to know anything about cv or `RepoStorage` at all, since its only job is to store "the latest". 
+Currently a simple API key authenticated server for downloading files.
+
+Notice the server doesn't need to know anything about `CheckVersion` or `RepoStorage` at all, since its only job is to store "the latest". 
 
 What's more, it's not really possible for the server to keep track of accurate date of "last update" time of files - it's more useful to keep an MD5 as checksum for avoiding uploading/downloading the same files.
 

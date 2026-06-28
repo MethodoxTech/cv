@@ -1,6 +1,6 @@
 ﻿using System.Text.RegularExpressions;
 
-namespace cv.Types
+namespace CheckVersion.Types
 {
     public class IgnoreRule
     {

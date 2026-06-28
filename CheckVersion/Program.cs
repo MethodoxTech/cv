@@ -2,9 +2,9 @@
 using System.IO;
 using System.Threading.Tasks;
 using Color = System.Drawing.Color;
-using Console = cv.Types.ColorConsole;
+using Console = CheckVersion.Types.ColorConsole;
 
-namespace cv
+namespace CheckVersion
 {
     internal class Program
     {
@@ -100,18 +100,18 @@ namespace cv
                 cv — Check Version CLI
 
                 Usage:
-                  cv <command> [options]
+                  CheckVersion <command> [options]
 
                 Commands:
-                  init               Initialize a new cv repo in the current directory
+                  init               Initialize a new CheckVersion repo in the current directory
                   status             Show uncommitted file changes (like `git status`)
                   list               Show all tracked files (and any uncommitted changes)
                   commit -m <msg>    Commit current changes with message <msg>
                   log                Show commit history
                   gather <output folder> Gather version controlled files to a folder
                   archive <output path>  Gather version controlled files to an archive
-                  push <url> <key>   Upload new/updated files to cv-server
-                  pull <url> <key>   Download latest files from cv-server
+                  push <url> <key>   Upload new/updated files to CheckVersion-server
+                  pull <url> <key>   Download latest files from CheckVersion-server
 
                 Options:
                   -h, --help, help   Show this help information

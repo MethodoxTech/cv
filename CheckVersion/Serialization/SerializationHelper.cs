@@ -1,10 +1,10 @@
-﻿using cv.Types;
+﻿using CheckVersion.Types;
 using YamlDotNet.Serialization.NamingConventions;
 using YamlDotNet.Serialization;
 using System.IO;
 using System.Reflection.Metadata.Ecma335;
 
-namespace cv.Serialization
+namespace CheckVersion.Serialization
 {
     public static class SerializationHelper
     {

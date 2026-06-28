@@ -1,4 +1,4 @@
-﻿using cv;
+﻿using CheckVersion;
 
 namespace CheckVersion.UnitTests
 {
@@ -25,7 +25,7 @@ namespace CheckVersion.UnitTests
             // Ensure file is gone
             if (File.Exists(_tempIgnoreFile)) File.Delete(_tempIgnoreFile);
 
-            List<cv.Types.IgnoreRule> rules = _tool.ReadIgnoreRules();
+            List<CheckVersion.Types.IgnoreRule> rules = _tool.ReadIgnoreRules();
             Assert.NotNull(rules);
             Assert.Empty(rules);
         }
@@ -45,7 +45,7 @@ namespace CheckVersion.UnitTests
             ];
             File.WriteAllLines(_tempIgnoreFile, lines);
 
-            List<cv.Types.IgnoreRule> rules = [.. _tool.ReadIgnoreRules()];
+            List<CheckVersion.Types.IgnoreRule> rules = [.. _tool.ReadIgnoreRules()];
 
             // Expect three rules: "*.log", "!important.log", "data/*.csv"
             Assert.Equal(3, rules.Count);

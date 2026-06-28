@@ -1,5 +1,5 @@
-using cv.Types;
-using cv;
+using CheckVersion.Types;
+using CheckVersion;
 
 namespace CheckVersion.UnitTests
 {

@@ -1,5 +1,5 @@
-﻿using cv.Serialization;
-using cv.Types;
+﻿using CheckVersion.Serialization;
+using CheckVersion.Types;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -10,9 +10,9 @@ using System.Net.Http;
 using System.Net.Http.Json;
 using System.Threading.Tasks;
 using Color = System.Drawing.Color;
-using Console = cv.Types.ColorConsole;
+using Console = CheckVersion.Types.ColorConsole;
 
-namespace cv
+namespace CheckVersion
 {
     public class CheckVersionTool
     {
@@ -346,7 +346,7 @@ namespace cv
 
         #region Remote Sync
         /// <summary>
-        /// Push new & updated files to a remote cv‐server.
+        /// Push new & updated files to a remote ChangeVersion‐server.
         /// </summary>
         public async Task PushAsync(string serverUrl, string apiKey)
         {
@@ -379,7 +379,7 @@ namespace cv
             }
         }
         /// <summary>
-        /// Pull all files from remote cv‐server, overwriting local copies.
+        /// Pull all files from remote ChangeVersion‐server, overwriting local copies.
         /// </summary>
         public async Task PullAsync(string serverUrl, string apiKey)
         {

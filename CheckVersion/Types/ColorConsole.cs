@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Drawing;
 
-namespace cv.Types
+namespace CheckVersion.Types
 {
     /// <summary>
     /// Print colorful console texts; A drop-in replacement for Colorful.Console, with some interface change for clarity
