@@ -1,6 +1,4 @@
-﻿using CheckVersion;
-
-namespace CheckVersion.UnitTests
+﻿namespace CheckVersion.UnitTests
 {
     public class CheckVersionToolIgnoreTests : IDisposable
     {

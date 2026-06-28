@@ -1,5 +1,4 @@
 using CheckVersion.Types;
-using CheckVersion;
 
 namespace CheckVersion.UnitTests
 {

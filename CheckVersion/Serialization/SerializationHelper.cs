@@ -2,7 +2,6 @@
 using YamlDotNet.Serialization.NamingConventions;
 using YamlDotNet.Serialization;
 using System.IO;
-using System.Reflection.Metadata.Ecma335;
 
 namespace CheckVersion.Serialization
 {
