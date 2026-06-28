@@ -423,20 +423,19 @@ namespace CheckVersion
 
             RepoStorage storage = SerializationHelper.DeserializeFromFile(StorageFilePath);
             Dictionary<string, (DateTime UpdateTime, DateTime CreationTime)> latest = storage.GetLatestFiles();
-            Dictionary<string, DateTime> actual = GetActualFiles();
+            Dictionary<string, (DateTime UpdateTime, DateTime CreationTime, long Size)> actual = GetActualFiles();
             DateTime lastCommit = storage.Commits.Count > 0 ? storage.Commits.Last().Time : DateTime.MinValue;
 
             Changelist changes = new();
-            foreach ((string relativePath, DateTime updateTime) in actual)
+            foreach ((string relativePath, (DateTime updateTime, DateTime creationTime, long size)) in actual)
             {
                 // New files
                 if (!latest.ContainsKey(relativePath))
                 {
                     // Moved files
-                    if (File.GetCreationTimeUtc(relativePath) < lastCommit
-                        && latest.Any(f => f.Value.CreationTime == File.GetCreationTimeUtc(relativePath)))
+                    if (creationTime < lastCommit && latest.Any(f => f.Value.CreationTime == creationTime))
                     {
-                        string movedFile = latest.First(f => f.Value.CreationTime == File.GetCreationTimeUtc(relativePath)).Key;
+                        string movedFile = latest.First(f => f.Value.CreationTime == creationTime).Key;
 
                         changes.MovedFiles.Add(new FileChange()
                         {
@@ -444,7 +443,7 @@ namespace CheckVersion
                             NewPath = relativePath,
                             Path = movedFile,
                             UpdateTime = updateTime,
-                            Size = new FileInfo(relativePath).Length
+                            Size = size
                         });
 
                         latest.Remove(movedFile);
@@ -453,10 +452,10 @@ namespace CheckVersion
                         changes.NewFiles.Add(new FileChange()
                         {
                             ChangeType = FileChange.FileChangeType.New,
-                            NewPath = File.GetCreationTimeUtc(relativePath).Ticks.ToString(),
+                            NewPath = creationTime.Ticks.ToString(),
                             Path = relativePath,
                             UpdateTime = updateTime,
-                            Size = new FileInfo(relativePath).Length
+                            Size = size
                         });
                 }
                 // Updated files
@@ -465,7 +464,7 @@ namespace CheckVersion
                     if (updateTime > latest[relativePath].UpdateTime)
                     {
                         // Deleted then recreated file
-                        if (latest[relativePath].CreationTime != File.GetCreationTimeUtc(relativePath))
+                        if (latest[relativePath].CreationTime != creationTime)
                         {
                             changes.DeletedFiles.Add(new FileChange()
                             {
@@ -478,10 +477,10 @@ namespace CheckVersion
                             changes.NewFiles.Add(new FileChange()
                             {
                                 ChangeType = FileChange.FileChangeType.Recreated,
-                                NewPath = File.GetCreationTimeUtc(relativePath).Ticks.ToString(),
+                                NewPath = creationTime.Ticks.ToString(),
                                 Path = relativePath,
                                 UpdateTime = updateTime,
-                                Size = new FileInfo(relativePath).Length
+                                Size = size
                             });
                         }
                         else
@@ -491,7 +490,7 @@ namespace CheckVersion
                                 NewPath = null,
                                 Path = relativePath,
                                 UpdateTime = updateTime,
-                                Size = new FileInfo(relativePath).Length
+                                Size = size
                             });
                     }
 
@@ -512,27 +511,39 @@ namespace CheckVersion
             return changes;
         }
         /// <summary>
-        /// Get all the files that we recognize that's currently under version tracking
+        /// Get all the files that we recognize that's currently available for version tracking
         /// </summary>
-        private Dictionary<string, DateTime> GetActualFiles()
+        private Dictionary<string, (DateTime UpdateTime, DateTime CreationTime, long Size)> GetActualFiles()
         {
-            Dictionary<string, DateTime> entries = [];
-            EnumerateAndAddFileEntry(RootPath);
+            Dictionary<string, (DateTime UpdateTime, DateTime CreationTime, long Size)> entries = [];
+            List<IgnoreRule> ignoreRules = ReadIgnoreRules();
+
+            string rootFullPath = Path.GetFullPath(RootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            string controlFolderFullPath = Path.GetFullPath(Path.Combine(RootPath, RepoControlFolderName)).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+            EnumerationOptions options = new()
+            {
+                IgnoreInaccessible = true,
+                RecurseSubdirectories = false,
+                ReturnSpecialDirectories = false
+            };
+
+            EnumerateAndAddFileEntry(new DirectoryInfo(rootFullPath));
             return entries;
 
-            void EnumerateAndAddFileEntry(string currentFolder)
+            void EnumerateAndAddFileEntry(DirectoryInfo currentFolder)
             {
-                List<IgnoreRule> ignoreRules = ReadIgnoreRules();
-
                 // Recurse into subfolders unless ignored
-                foreach (string subFolder in Directory.EnumerateDirectories(currentFolder))
+                foreach (DirectoryInfo subFolder in currentFolder.EnumerateDirectories("*", options))
                 {
-                    // Compute the relative path for matching
-                    string relativeFolder = Path.GetRelativePath(RootPath, subFolder).Replace('\\', '/');
+                    string subFolderFullPath = subFolder.FullName.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
                     // Skip control folder
-                    if (currentFolder == RootPath && string.Equals(Path.GetFileName(subFolder), RepoControlFolderName, StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(subFolderFullPath, controlFolderFullPath, StringComparison.OrdinalIgnoreCase))
                         continue;
+
+                    // Compute the relative path for matching
+                    string relativeFolder = Path.GetRelativePath(rootFullPath, subFolder.FullName).Replace('\\', '/');
 
                     // If the ignore rules say to ignore this directory, don't even recurse into it
                     if (ShouldIgnore(ignoreRules, relativeFolder))
@@ -541,11 +552,11 @@ namespace CheckVersion
                     EnumerateAndAddFileEntry(subFolder);
                 }
                 // Enumerate files in non‐ignored folders
-                foreach (string file in Directory.EnumerateFiles(currentFolder))
+                foreach (FileInfo file in currentFolder.EnumerateFiles("*", options))
                 {
-                    string relativePath = Path.GetRelativePath(RootPath, file).Replace('\\', '/');
-                    if (ignoreRules == null || !ShouldIgnore(ignoreRules, relativePath))
-                        entries[relativePath] = File.GetLastWriteTimeUtc(file);
+                    string relativePath = Path.GetRelativePath(rootFullPath, file.FullName).Replace('\\', '/');
+                    if (!ShouldIgnore(ignoreRules, relativePath))
+                        entries[relativePath] = (file.LastWriteTimeUtc, file.CreationTimeUtc, file.Length);
                 }
             }
         }
