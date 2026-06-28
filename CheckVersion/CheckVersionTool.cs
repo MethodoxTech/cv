@@ -19,13 +19,13 @@ namespace CheckVersion
         #region Properties
         public string RootPath { get; }
         public string RepoControlFolderName { get; }
-        public string StorageFilePath { get; }
+        public string ChangelogFilePath { get; }
         public string IgnoreFilename { get; }
         public CheckVersionTool(string repoRootPath, string repoControlFolderName, string repoStorageFilePath, string ignoreFilename)
         {
             RootPath = repoRootPath;
             RepoControlFolderName = repoControlFolderName;
-            StorageFilePath = repoStorageFilePath;
+            ChangelogFilePath = repoStorageFilePath;
             IgnoreFilename = ignoreFilename;
         }
         #endregion
@@ -42,7 +42,7 @@ namespace CheckVersion
                 return;
             }
 
-            RepoStorage storage = SerializationHelper.DeserializeFromFile(StorageFilePath);
+            RepoStorage storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
             for (int i = 0; i < storage.Commits.Count; i++)
             {
                 RepoStorage.Commit commit = storage.Commits[i];
@@ -63,7 +63,7 @@ namespace CheckVersion
             {
                 Changelist changes = GetChanges();
 
-                RepoStorage storage = SerializationHelper.DeserializeFromFile(StorageFilePath);
+                RepoStorage storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
                 List<FileChange> allChanges = changes.DeletedFiles
                     .Union(changes.UpdatedFiles)
                     .Union(changes.MovedFiles)
@@ -83,7 +83,7 @@ namespace CheckVersion
                     Message = message,
                     Time = DateTime.Now.ToUniversalTime()
                 });
-                SerializationHelper.SerializeToFile(storage, StorageFilePath);
+                SerializationHelper.SerializeToFile(storage, ChangelogFilePath);
                 Console.WriteLine(Color.Goldenrod, $"Saved {allChanges.Count} {(allChanges.Count <= 1 ? "file" : "files")}.");
             }
         }
@@ -97,7 +97,7 @@ namespace CheckVersion
             else
             {
                 Directory.CreateDirectory(RepoControlFolderName);
-                SerializationHelper.SerializeToFile(new RepoStorage(), StorageFilePath);
+                SerializationHelper.SerializeToFile(new RepoStorage(), ChangelogFilePath);
                 Console.WriteLine(Color.GreenYellow, $"Repo initialized at: {RootPath}");
             }
         }
@@ -162,7 +162,7 @@ namespace CheckVersion
             }
 
             // Load tracked files
-            RepoStorage storage = SerializationHelper.DeserializeFromFile(StorageFilePath);
+            RepoStorage storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
             List<string> tracked = storage
                 .GetLatestFiles()
                 .Keys
@@ -244,7 +244,7 @@ namespace CheckVersion
                 Directory.CreateDirectory(fullOutputFolder);
             }
 
-            RepoStorage storage = SerializationHelper.DeserializeFromFile(StorageFilePath);
+            RepoStorage storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
             List<string> tracked = storage
                 .GetLatestFiles()
                 .Keys
@@ -313,7 +313,7 @@ namespace CheckVersion
                 return;
             }
 
-            RepoStorage storage = SerializationHelper.DeserializeFromFile(StorageFilePath);
+            RepoStorage storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
             List<string> tracked = storage
                 .GetLatestFiles()
                 .Keys
@@ -421,7 +421,7 @@ namespace CheckVersion
             if (!Directory.Exists(RepoControlFolderName))
                 throw new InvalidOperationException("Must be inside a CV repo.");
 
-            RepoStorage storage = SerializationHelper.DeserializeFromFile(StorageFilePath);
+            RepoStorage storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
             Dictionary<string, (DateTime UpdateTime, DateTime CreationTime)> latest = storage.GetLatestFiles();
             Dictionary<string, (DateTime UpdateTime, DateTime CreationTime, long Size)> actual = GetActualFiles();
             DateTime lastCommit = storage.Commits.Count > 0 ? storage.Commits.Last().Time : DateTime.MinValue;

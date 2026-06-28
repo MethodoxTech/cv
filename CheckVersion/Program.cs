@@ -97,21 +97,21 @@ namespace CheckVersion
         private static void PrintDetailedHelp()
         {
             const string helpText = """
-                cv — Check Version CLI
+                cv — Check Version CLI (v1.1.0)
 
                 Usage:
                   CheckVersion <command> [options]
 
                 Commands:
-                  init               Initialize a new CheckVersion repo in the current directory
-                  status             Show uncommitted file changes (like `git status`)
-                  list               Show all tracked files (and any uncommitted changes)
-                  commit -m <msg>    Commit current changes with message <msg>
-                  log                Show commit history
-                  gather <output folder> Gather version controlled files to a folder
-                  archive <output path>  Gather version controlled files to an archive
-                  push <url> <key>   Upload new/updated files to CheckVersion-server
-                  pull <url> <key>   Download latest files from CheckVersion-server
+                  init                   Initialize a new CheckVersion repo in the current directory
+                  status                 Show uncommitted file changes (like `git status`)
+                  list                   Show all tracked files (and any uncommitted changes)
+                  commit -m <msg>        Commit current changes with message <msg>
+                  log                    Show commit history
+                  gather <output folder> Gather version-controlled files to a folder
+                  archive <output path>  Compress version-controlled files to an archive
+                  push <url> <key>       Upload new/updated files to CheckVersion-server
+                  pull <url> <key>       Download latest files from CheckVersion-server
 
                 Options:
                   -h, --help, help   Show this help information
