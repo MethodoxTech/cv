@@ -1,6 +1,6 @@
 # README - TODO
 
-Add TODO file here to avoid the main README looking clustered.
+Project wise TODO items is edited here to avoid clustering the public facing main README.
 
 ## TODO
 
