@@ -17,3 +17,4 @@ As of v1.1.0 we don't depend on Parcel NExT yet and should try to keep it that w
 ## References
 
 See respective project README for details.
+See `CheckVersion/README.md` for more.
