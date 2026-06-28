@@ -81,3 +81,4 @@ Changelog:
 * v1.0.4: Add syncing functions.
 * v1.0.5: Update ignore rule to ignore all matching folders. Fix serialization issue.
 * v1.0.6: Improve `list`; Implement `gather` and `archive`.
+* v1.1.0: Upgrade to .Net 10.

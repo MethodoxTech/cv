@@ -123,7 +123,7 @@ namespace CheckVersion
             Console.WriteLine(Color.Goldenrod, helpText);
         }
         private static void PrintVersion()
-            => Console.WriteLine("cv — Check Version CLI v1.0.6");
+            => Console.WriteLine("cv — Check Version CLI v1.1.0");
         #endregion
     }
 }

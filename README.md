@@ -12,7 +12,7 @@ To publish, manually generate output: self-contained single file with trim but n
 
 ## Parcel NExT Dependencies
 
-As of v1.0.6 we don't depend on Parcel NExT yet and should try to keep it that way.
+As of v1.1.0 we don't depend on Parcel NExT yet and should try to keep it that way.
 
 ## References
 
