@@ -244,6 +244,10 @@ namespace CheckVersion
                 Directory.CreateDirectory(fullOutputFolder);
             }
 
+            Changelist changes = GetChanges();
+            if (HasUncommittedChanges(changes))
+                Console.WriteLine(Color.Yellow, "Warning: repo has uncommitted changes. Gather will copy current tracked file contents; new untracked files are omitted.");
+
             RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
             List<string> tracked = storage
                 .GetLatestFiles()
@@ -313,6 +317,10 @@ namespace CheckVersion
                 return;
             }
 
+            Changelist changes = GetChanges();
+            if (HasUncommittedChanges(changes))
+                Console.WriteLine(Color.Yellow, "Warning: repo has uncommitted changes. Archive will copy current tracked file contents; new untracked files are omitted.");
+
             RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
             List<string> tracked = storage
                 .GetLatestFiles()
@@ -336,11 +344,187 @@ namespace CheckVersion
             foreach (string relativePath in tracked)
             {
                 string sourcePath = Path.Combine(RootPath, relativePath);
-                archive.CreateEntryFromFile(sourcePath, relativePath, CompressionLevel.Optimal);
+                archive.CreateEntryFromFile(sourcePath, NormalizeArchivePath(relativePath), CompressionLevel.Optimal);
                 Console.WriteLine(Color.Green, $"Archived {relativePath}");
             }
 
             Console.WriteLine(Color.GreenYellow, $"Archive created: {fullZipPath}");
+        }
+        /// <summary>
+        /// Create a restorable checkpoint archive containing the version history and all currently tracked files.
+        /// </summary>
+        public void CreateCheckpoint(string targetZipFile)
+        {
+            if (!Directory.Exists(RepoControlFolderName))
+            {
+                Console.WriteLine(Color.Red, "No repo exists at current location");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(targetZipFile))
+            {
+                Console.WriteLine(Color.Red, "Target zip file is required.");
+                return;
+            }
+
+            Changelist changes = GetChanges();
+            if (HasUncommittedChanges(changes))
+            {
+                Console.WriteLine(Color.Red, "Cannot create checkpoint because the repo has uncommitted changes.");
+                return;
+            }
+
+            string fullZipPath = Path.GetFullPath(targetZipFile);
+            if (Directory.Exists(fullZipPath))
+            {
+                Console.WriteLine(Color.Red, "Target zip path points to a folder, not a file.");
+                return;
+            }
+
+            string? zipDirectory = Path.GetDirectoryName(fullZipPath);
+            if (!string.IsNullOrEmpty(zipDirectory))
+                Directory.CreateDirectory(zipDirectory);
+
+            if (File.Exists(fullZipPath))
+            {
+                Console.WriteLine(Color.Red, "Target zip file already exists.");
+                return;
+            }
+
+            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
+            List<string> tracked = storage
+                .GetLatestFiles()
+                .Keys
+                .OrderBy(p => p)
+                .ToList();
+
+            List<string> missingFiles = tracked
+                .Where(p => !File.Exists(Path.Combine(RootPath, p)))
+                .ToList();
+
+            if (missingFiles.Count > 0)
+            {
+                Console.WriteLine(Color.Red, "Cannot create checkpoint because some tracked files are missing:");
+                foreach (string missing in missingFiles)
+                    Console.WriteLine(Color.Yellow, missing);
+                return;
+            }
+
+            using ZipArchive archive = ZipFile.Open(fullZipPath, ZipArchiveMode.Create);
+
+            archive.CreateEntryFromFile(ChangelogFilePath, NormalizeArchivePath(Program.RepoStorageFilePath), CompressionLevel.Optimal);
+            Console.WriteLine(Color.Green, $"Checkpointed {Program.RepoStorageFilePath}");
+
+            foreach (string relativePath in tracked)
+            {
+                string sourcePath = Path.Combine(RootPath, relativePath);
+                archive.CreateEntryFromFile(sourcePath, NormalizeArchivePath(relativePath), CompressionLevel.Optimal);
+                Console.WriteLine(Color.Green, $"Checkpointed {relativePath}");
+            }
+
+            Console.WriteLine(Color.GreenYellow, $"Checkpoint created: {fullZipPath}");
+        }
+        /// <summary>
+        /// Restore a checkpoint archive into a clean folder.
+        /// </summary>
+        public void RestoreCheckpoint(string sourceZipFile)
+        {
+            if (Directory.Exists(RepoControlFolderName))
+            {
+                Console.WriteLine(Color.Red, "Cannot restore checkpoint because a CV repo already exists at this location.");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(sourceZipFile))
+            {
+                Console.WriteLine(Color.Red, "Source zip file is required.");
+                return;
+            }
+
+            string fullZipPath = Path.GetFullPath(sourceZipFile);
+            if (!File.Exists(fullZipPath))
+            {
+                Console.WriteLine(Color.Red, "Source zip file does not exist.");
+                return;
+            }
+
+            string rootFullPath = Path.GetFullPath(RootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (!IsCleanRestoreFolder(rootFullPath, fullZipPath))
+            {
+                Console.WriteLine(Color.Red, "Current folder must be empty before restoring a checkpoint, except for the checkpoint file itself.");
+                return;
+            }
+
+            using ZipArchive archive = ZipFile.OpenRead(fullZipPath);
+
+            bool hasHistory = archive.Entries.Any(e => NormalizeArchivePath(e.FullName) == NormalizeArchivePath(Program.RepoStorageFilePath));
+            if (!hasHistory)
+            {
+                Console.WriteLine(Color.Red, $"Invalid checkpoint: missing {Program.RepoStorageFilePath}.");
+                return;
+            }
+
+            foreach (ZipArchiveEntry entry in archive.Entries)
+            {
+                string entryName = NormalizeArchivePath(entry.FullName);
+                if (string.IsNullOrWhiteSpace(entryName))
+                    continue;
+
+                string destinationPath;
+                try
+                {
+                    destinationPath = GetSafeExtractionPath(rootFullPath, entryName);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    Console.WriteLine(Color.Red, ex.Message);
+                    return;
+                }
+
+                if (entryName.EndsWith("/", StringComparison.Ordinal))
+                {
+                    if (File.Exists(destinationPath))
+                    {
+                        Console.WriteLine(Color.Red, $"Cannot restore because a file already exists where a folder is needed: {entryName}");
+                        return;
+                    }
+
+                    Directory.CreateDirectory(destinationPath);
+                    continue;
+                }
+
+                if (File.Exists(destinationPath) || Directory.Exists(destinationPath))
+                {
+                    Console.WriteLine(Color.Red, $"Cannot restore because destination already exists: {entryName}");
+                    return;
+                }
+            }
+
+            foreach (ZipArchiveEntry entry in archive.Entries)
+            {
+                string entryName = NormalizeArchivePath(entry.FullName);
+                if (string.IsNullOrWhiteSpace(entryName))
+                    continue;
+
+                string destinationPath = GetSafeExtractionPath(rootFullPath, entryName);
+
+                if (entryName.EndsWith("/", StringComparison.Ordinal))
+                {
+                    Directory.CreateDirectory(destinationPath);
+                    continue;
+                }
+
+                string? destinationDirectory = Path.GetDirectoryName(destinationPath);
+                if (!string.IsNullOrEmpty(destinationDirectory))
+                    Directory.CreateDirectory(destinationDirectory);
+
+                entry.ExtractToFile(destinationPath, overwrite: false);
+                Console.WriteLine(Color.Green, $"Restored {entryName}");
+            }
+
+            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
+            int trackedCount = storage.GetLatestFiles().Count;
+            Console.WriteLine(Color.GreenYellow, $"Checkpoint restored: {trackedCount} {(trackedCount == 1 ? "file" : "files")} tracked.");
         }
         #endregion
 
@@ -588,6 +772,39 @@ namespace CheckVersion
             }
 
             return ignored.GetValueOrDefault(false);
+        }
+        private static bool HasUncommittedChanges(Changelist changes)
+            => changes.NewFiles.Any() ||
+               changes.UpdatedFiles.Any() ||
+               changes.MovedFiles.Any() ||
+               changes.DeletedFiles.Any();
+        private static string NormalizeArchivePath(string path)
+            => path.Replace('\\', '/').TrimStart('/');
+        private static bool IsCleanRestoreFolder(string rootFullPath, string sourceZipFullPath)
+        {
+            foreach (string entry in Directory.EnumerateFileSystemEntries(rootFullPath))
+            {
+                string entryFullPath = Path.GetFullPath(entry).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                string sourceFullPath = sourceZipFullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+                if (string.Equals(entryFullPath, sourceFullPath, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                return false;
+            }
+
+            return true;
+        }
+        private static string GetSafeExtractionPath(string rootFullPath, string entryName)
+        {
+            string normalizedName = entryName.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
+            string destinationPath = Path.GetFullPath(Path.Combine(rootFullPath, normalizedName));
+            string rootWithSeparator = rootFullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+
+            if (!destinationPath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"Unsafe checkpoint entry path: {entryName}");
+
+            return destinationPath;
         }
         #endregion
     }
