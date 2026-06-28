@@ -1,5 +1,6 @@
 # Check Version (cv)
 
+Version: v1.1.1
 Previous Names: Change Version
 
 Check Version is a CLI tool that provides quick check against a repo's changes without saving any changed contents. It does so by recording only the update time. The outputs is just like `git status` - but without diff.
