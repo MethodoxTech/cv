@@ -30,19 +30,36 @@ namespace CheckVersion
         }
         #endregion
 
+        #region Accessors
+        private string RepoControlFolderPath
+            => Path.IsPathRooted(RepoControlFolderName)
+            ? Path.GetFullPath(RepoControlFolderName)
+            : Path.GetFullPath(Path.Combine(RootPath, RepoControlFolderName));
+        private string ChangelogFullFilePath
+            => Path.IsPathRooted(ChangelogFilePath)
+            ? Path.GetFullPath(ChangelogFilePath)
+            : Path.GetFullPath(Path.Combine(RootPath, ChangelogFilePath));
+        private string IgnoreFullFilePath
+            => Path.IsPathRooted(IgnoreFilename)
+            ? Path.GetFullPath(IgnoreFilename)
+            : Path.GetFullPath(Path.Combine(RootPath, IgnoreFilename));
+        private string ChangelogArchivePath
+            => NormalizeArchivePath(Path.GetRelativePath(Path.GetFullPath(RootPath), ChangelogFullFilePath));
+        #endregion
+
         #region Methods
         /// <summary>
         /// Log all existing commits.
         /// </summary>
         public void Log()
         {
-            if (!Directory.Exists(RepoControlFolderName))
+            if (!Directory.Exists(RepoControlFolderPath))
             {
                 Console.WriteLine(Color.Red, "No repo exists at current location");
                 return;
             }
 
-            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
+            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFullFilePath);
             for (int i = 0; i < storage.Commits.Count; i++)
             {
                 RepoHistory.Commit commit = storage.Commits[i];
@@ -57,13 +74,13 @@ namespace CheckVersion
         /// </summary>
         public void Commit(string message)
         {
-            if (!Directory.Exists(RepoControlFolderName))
+            if (!Directory.Exists(RepoControlFolderPath))
                 Console.WriteLine(Color.Red, "No repo exists at current location");
             else
             {
                 Changelist changes = GetChanges();
 
-                RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
+                RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFullFilePath);
                 List<FileChangeRecord> allChanges = changes.DeletedFiles
                     .Union(changes.UpdatedFiles)
                     .Union(changes.MovedFiles)
@@ -83,7 +100,7 @@ namespace CheckVersion
                     Message = message,
                     Time = DateTime.Now.ToUniversalTime()
                 });
-                SerializationHelper.SerializeToFile(storage, ChangelogFilePath);
+                SerializationHelper.SerializeToFile(storage, ChangelogFullFilePath);
                 Console.WriteLine(Color.Goldenrod, $"Saved {allChanges.Count} {(allChanges.Count <= 1 ? "file" : "files")}.");
             }
         }
@@ -92,12 +109,12 @@ namespace CheckVersion
         /// </summary>
         public void Init()
         {
-            if (Directory.Exists(RepoControlFolderName))
+            if (Directory.Exists(RepoControlFolderPath))
                 Console.WriteLine(Color.Red, "A CV repo already exists at this location.");
             else
             {
-                Directory.CreateDirectory(RepoControlFolderName);
-                SerializationHelper.SerializeToFile(new RepoHistory(), ChangelogFilePath);
+                Directory.CreateDirectory(RepoControlFolderPath);
+                SerializationHelper.SerializeToFile(new RepoHistory(), ChangelogFullFilePath);
                 Console.WriteLine(Color.GreenYellow, $"Repo initialized at: {RootPath}");
             }
         }
@@ -106,7 +123,7 @@ namespace CheckVersion
         /// </summary>
         public void Status()
         {
-            if (!Directory.Exists(RepoControlFolderName))
+            if (!Directory.Exists(RepoControlFolderPath))
             {
                 Console.WriteLine(Color.Red, "No repo exists at current location");
                 return;
@@ -155,14 +172,14 @@ namespace CheckVersion
         /// </summary>
         public void List()
         {
-            if (!Directory.Exists(RepoControlFolderName))
+            if (!Directory.Exists(RepoControlFolderPath))
             {
                 Console.WriteLine(Color.Red, "No repo exists at current location");
                 return;
             }
 
             // Load tracked files
-            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
+            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFullFilePath);
             List<string> tracked = storage
                 .GetLatestFiles()
                 .Keys
@@ -210,7 +227,7 @@ namespace CheckVersion
         /// </summary>
         public void Gather(string outputFolder)
         {
-            if (!Directory.Exists(RepoControlFolderName))
+            if (!Directory.Exists(RepoControlFolderPath))
             {
                 Console.WriteLine(Color.Red, "No repo exists at current location");
                 return;
@@ -248,7 +265,7 @@ namespace CheckVersion
             if (HasUncommittedChanges(changes))
                 Console.WriteLine(Color.Yellow, "Warning: repo has uncommitted changes. Gather will copy current tracked file contents; new untracked files are omitted.");
 
-            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
+            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFullFilePath);
             List<string> tracked = storage
                 .GetLatestFiles()
                 .Keys
@@ -287,7 +304,7 @@ namespace CheckVersion
         /// </summary>
         public void Archive(string outputZipFile)
         {
-            if (!Directory.Exists(RepoControlFolderName))
+            if (!Directory.Exists(RepoControlFolderPath))
             {
                 Console.WriteLine(Color.Red, "No repo exists at current location");
                 return;
@@ -321,7 +338,7 @@ namespace CheckVersion
             if (HasUncommittedChanges(changes))
                 Console.WriteLine(Color.Yellow, "Warning: repo has uncommitted changes. Archive will copy current tracked file contents; new untracked files are omitted.");
 
-            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
+            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFullFilePath);
             List<string> tracked = storage
                 .GetLatestFiles()
                 .Keys
@@ -355,7 +372,7 @@ namespace CheckVersion
         /// </summary>
         public void CreateCheckpoint(string targetZipFile)
         {
-            if (!Directory.Exists(RepoControlFolderName))
+            if (!Directory.Exists(RepoControlFolderPath))
             {
                 Console.WriteLine(Color.Red, "No repo exists at current location");
                 return;
@@ -391,7 +408,7 @@ namespace CheckVersion
                 return;
             }
 
-            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
+            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFullFilePath);
             List<string> tracked = storage
                 .GetLatestFiles()
                 .Keys
@@ -412,7 +429,7 @@ namespace CheckVersion
 
             using ZipArchive archive = ZipFile.Open(fullZipPath, ZipArchiveMode.Create);
 
-            archive.CreateEntryFromFile(ChangelogFilePath, NormalizeArchivePath(Program.RepoStorageFilePath), CompressionLevel.Optimal);
+            archive.CreateEntryFromFile(ChangelogFullFilePath, ChangelogArchivePath, CompressionLevel.Optimal);
             Console.WriteLine(Color.Green, $"Checkpointed {Program.RepoStorageFilePath}");
 
             foreach (string relativePath in tracked)
@@ -429,7 +446,7 @@ namespace CheckVersion
         /// </summary>
         public void RestoreCheckpoint(string sourceZipFile)
         {
-            if (Directory.Exists(RepoControlFolderName))
+            if (Directory.Exists(RepoControlFolderPath))
             {
                 Console.WriteLine(Color.Red, "Cannot restore checkpoint because a CV repo already exists at this location.");
                 return;
@@ -522,7 +539,9 @@ namespace CheckVersion
                 Console.WriteLine(Color.Green, $"Restored {entryName}");
             }
 
-            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
+            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFullFilePath);
+            RestoreTrackedFileTimes(storage);
+
             int trackedCount = storage.GetLatestFiles().Count;
             Console.WriteLine(Color.GreenYellow, $"Checkpoint restored: {trackedCount} {(trackedCount == 1 ? "file" : "files")} tracked.");
         }
@@ -602,10 +621,10 @@ namespace CheckVersion
         #region Helpers
         private Changelist GetChanges()
         {
-            if (!Directory.Exists(RepoControlFolderName))
+            if (!Directory.Exists(RepoControlFolderPath))
                 throw new InvalidOperationException("Must be inside a CV repo.");
 
-            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
+            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFullFilePath);
             Dictionary<string, (DateTime UpdateTime, DateTime CreationTime)> latest = storage.GetLatestFiles();
             Dictionary<string, (DateTime UpdateTime, DateTime CreationTime, long Size)> actual = GetActualFiles();
             DateTime lastCommit = storage.Commits.Count > 0 ? storage.Commits.Last().Time : DateTime.MinValue;
@@ -703,7 +722,7 @@ namespace CheckVersion
             List<IgnoreRule> ignoreRules = ReadIgnoreRules();
 
             string rootFullPath = Path.GetFullPath(RootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            string controlFolderFullPath = Path.GetFullPath(Path.Combine(RootPath, RepoControlFolderName)).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            string controlFolderFullPath = RepoControlFolderPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
             EnumerationOptions options = new()
             {
@@ -746,11 +765,11 @@ namespace CheckVersion
         }
         public List<IgnoreRule> ReadIgnoreRules()
         {
-            if (!File.Exists(IgnoreFilename))
+            if (!File.Exists(IgnoreFullFilePath))
                 return [];
 
             // Skip empty lines and lines with comments
-            return File.ReadAllLines(IgnoreFilename)
+            return File.ReadAllLines(IgnoreFullFilePath)
                 .Select(line => line.Trim())
                 .Where(line => line.Length > 0 && !line.StartsWith("#"))
                 .Select(line => new IgnoreRule(line))
@@ -794,6 +813,18 @@ namespace CheckVersion
             }
 
             return true;
+        }
+        private void RestoreTrackedFileTimes(RepoHistory storage)
+        {
+            foreach ((string relativePath, (DateTime updateTime, DateTime creationTime)) in storage.GetLatestFiles())
+            {
+                string fullPath = Path.Combine(RootPath, relativePath);
+                if (!File.Exists(fullPath))
+                    continue;
+
+                File.SetCreationTimeUtc(fullPath, creationTime);
+                File.SetLastWriteTimeUtc(fullPath, updateTime);
+            }
         }
         private static string GetSafeExtractionPath(string rootFullPath, string entryName)
         {
