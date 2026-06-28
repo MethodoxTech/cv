@@ -112,7 +112,7 @@ namespace CheckVersion
         private static void PrintDetailedHelp()
         {
             const string helpText = """
-                cv — Check Version CLI (v1.1.0)
+                cv — Check Version CLI (v1.1.1)
 
                 Usage:
                   cv <command> [options]
@@ -140,7 +140,7 @@ namespace CheckVersion
             Console.WriteLine(Color.Goldenrod, helpText);
         }
         private static void PrintVersion()
-            => Console.WriteLine("cv — Check Version CLI v1.1.0");
+            => Console.WriteLine("cv — Check Version CLI v1.1.1");
         #endregion
     }
 }
