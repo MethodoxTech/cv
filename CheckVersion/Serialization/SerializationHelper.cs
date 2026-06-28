@@ -18,11 +18,11 @@ namespace CheckVersion.Serialization
         #endregion
 
         #region Methods
-        internal static RepoStorage DeserializeFromFile(string repoStorageFilePath)
+        internal static RepoHistory DeserializeFromFile(string repoStorageFilePath)
             => File.Exists(repoStorageFilePath)
-            ? _deserializer.Deserialize<RepoStorage>(File.ReadAllText(repoStorageFilePath))
+            ? _deserializer.Deserialize<RepoHistory>(File.ReadAllText(repoStorageFilePath))
             : new();
-        internal static void SerializeToFile(RepoStorage storage, string repoStorageFilePath)
+        internal static void SerializeToFile(RepoHistory storage, string repoStorageFilePath)
             => File.WriteAllText(repoStorageFilePath, serializer.Serialize(storage));
         #endregion
     }

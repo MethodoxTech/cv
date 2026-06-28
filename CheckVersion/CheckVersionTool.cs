@@ -42,10 +42,10 @@ namespace CheckVersion
                 return;
             }
 
-            RepoStorage storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
+            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
             for (int i = 0; i < storage.Commits.Count; i++)
             {
-                RepoStorage.Commit commit = storage.Commits[i];
+                RepoHistory.Commit commit = storage.Commits[i];
                 Console.Write($"{i}.".PadRight(3));
                 Console.Write(Color.Green, commit.Time.ToLocalTime().ToString() + " ");
                 Console.WriteLine(Color.White, commit.Message);
@@ -63,8 +63,8 @@ namespace CheckVersion
             {
                 Changelist changes = GetChanges();
 
-                RepoStorage storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
-                List<FileChange> allChanges = changes.DeletedFiles
+                RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
+                List<FileChangeRecord> allChanges = changes.DeletedFiles
                     .Union(changes.UpdatedFiles)
                     .Union(changes.MovedFiles)
                     .Union(changes.NewFiles) // Order matters, we must union DeletedFiles first because in the case of FileChangeType.Recreate, we want to maintain that relation
@@ -77,7 +77,7 @@ namespace CheckVersion
                     if (input == "n" || input == "no" || input == "f")
                         return;
                 }
-                storage.Commits.Add(new RepoStorage.Commit()
+                storage.Commits.Add(new RepoHistory.Commit()
                 {
                     Changes = allChanges,
                     Message = message,
@@ -97,7 +97,7 @@ namespace CheckVersion
             else
             {
                 Directory.CreateDirectory(RepoControlFolderName);
-                SerializationHelper.SerializeToFile(new RepoStorage(), ChangelogFilePath);
+                SerializationHelper.SerializeToFile(new RepoHistory(), ChangelogFilePath);
                 Console.WriteLine(Color.GreenYellow, $"Repo initialized at: {RootPath}");
             }
         }
@@ -114,10 +114,10 @@ namespace CheckVersion
 
             Changelist changes = GetChanges();
             Console.WriteLine(Color.Goldenrod, $"# New: {changes.NewFiles.Count}");
-            foreach (FileChange file in changes.NewFiles)
+            foreach (FileChangeRecord file in changes.NewFiles)
             {
                 Console.Write(Color.Green, $"{file.Path} ");
-                if (file.ChangeType == FileChange.FileChangeType.Recreated)
+                if (file.ChangeType == FileChangeRecord.FileChangeType.Recreated)
                 {
                     Console.Write(Color.DarkGray, file.UpdateTime.ToLocalTime());
                     Console.WriteLine(Color.Yellow, " [Recreated]");
@@ -127,14 +127,14 @@ namespace CheckVersion
             }
 
             Console.WriteLine(Color.Goldenrod, $"# Updated: {changes.UpdatedFiles.Count}");
-            foreach (FileChange file in changes.UpdatedFiles)
+            foreach (FileChangeRecord file in changes.UpdatedFiles)
             {
                 Console.Write(Color.YellowGreen, $"{file.Path} ");
                 Console.WriteLine(Color.DarkGray, file.UpdateTime.ToLocalTime());
             }
 
             Console.WriteLine(Color.Goldenrod, $"# Moved: {changes.MovedFiles.Count}");
-            foreach (FileChange file in changes.MovedFiles)
+            foreach (FileChangeRecord file in changes.MovedFiles)
             {
                 Console.Write(Color.SkyBlue, $"{file.Path} ");
                 Console.Write(Color.Yellow, $"-> ");
@@ -143,7 +143,7 @@ namespace CheckVersion
             }
 
             Console.WriteLine(Color.Goldenrod, $"# Deleted: {changes.DeletedFiles.Count}");
-            foreach (FileChange file in changes.DeletedFiles)
+            foreach (FileChangeRecord file in changes.DeletedFiles)
             {
                 Console.Write(Color.DarkRed, $"{file.Path} ");
                 Console.WriteLine(Color.DarkGray, file.UpdateTime.ToLocalTime());
@@ -162,7 +162,7 @@ namespace CheckVersion
             }
 
             // Load tracked files
-            RepoStorage storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
+            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
             List<string> tracked = storage
                 .GetLatestFiles()
                 .Keys
@@ -195,13 +195,13 @@ namespace CheckVersion
                 Console.WriteLine();
                 Console.WriteLine(Color.Goldenrod, "# Uncommitted changes:");
 
-                foreach (FileChange f in changes.NewFiles)
+                foreach (FileChangeRecord f in changes.NewFiles)
                     Console.WriteLine(Color.Green, $"New:     {f.Path}");
-                foreach (FileChange f in changes.UpdatedFiles)
+                foreach (FileChangeRecord f in changes.UpdatedFiles)
                     Console.WriteLine(Color.YellowGreen, $"Updated: {f.Path}");
-                foreach (FileChange f in changes.MovedFiles)
+                foreach (FileChangeRecord f in changes.MovedFiles)
                     Console.WriteLine(Color.SkyBlue, $"Moved:   {f.Path} → {f.NewPath}");
-                foreach (FileChange f in changes.DeletedFiles)
+                foreach (FileChangeRecord f in changes.DeletedFiles)
                     Console.WriteLine(Color.DarkRed, $"Deleted: {f.Path}");
             }
         }
@@ -244,7 +244,7 @@ namespace CheckVersion
                 Directory.CreateDirectory(fullOutputFolder);
             }
 
-            RepoStorage storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
+            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
             List<string> tracked = storage
                 .GetLatestFiles()
                 .Keys
@@ -313,7 +313,7 @@ namespace CheckVersion
                 return;
             }
 
-            RepoStorage storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
+            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
             List<string> tracked = storage
                 .GetLatestFiles()
                 .Keys
@@ -354,7 +354,7 @@ namespace CheckVersion
             client.DefaultRequestHeaders.Add("X-Api-Key", apiKey);
 
             Changelist changes = GetChanges();
-            List<FileChange> toUpload = changes.NewFiles
+            List<FileChangeRecord> toUpload = changes.NewFiles
                 .Concat(changes.UpdatedFiles)
                 .ToList();
 
@@ -364,7 +364,7 @@ namespace CheckVersion
                 return;
             }
 
-            foreach (FileChange? change in toUpload)
+            foreach (FileChangeRecord? change in toUpload)
             {
                 string local = Path.Combine(RootPath, change.Path);
                 await using FileStream fs = File.OpenRead(local);
@@ -421,7 +421,7 @@ namespace CheckVersion
             if (!Directory.Exists(RepoControlFolderName))
                 throw new InvalidOperationException("Must be inside a CV repo.");
 
-            RepoStorage storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
+            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFilePath);
             Dictionary<string, (DateTime UpdateTime, DateTime CreationTime)> latest = storage.GetLatestFiles();
             Dictionary<string, (DateTime UpdateTime, DateTime CreationTime, long Size)> actual = GetActualFiles();
             DateTime lastCommit = storage.Commits.Count > 0 ? storage.Commits.Last().Time : DateTime.MinValue;
@@ -437,9 +437,9 @@ namespace CheckVersion
                     {
                         string movedFile = latest.First(f => f.Value.CreationTime == creationTime).Key;
 
-                        changes.MovedFiles.Add(new FileChange()
+                        changes.MovedFiles.Add(new FileChangeRecord()
                         {
-                            ChangeType = FileChange.FileChangeType.Moved,
+                            ChangeType = FileChangeRecord.FileChangeType.Moved,
                             NewPath = relativePath,
                             Path = movedFile,
                             UpdateTime = updateTime,
@@ -449,9 +449,9 @@ namespace CheckVersion
                         latest.Remove(movedFile);
                     }
                     else
-                        changes.NewFiles.Add(new FileChange()
+                        changes.NewFiles.Add(new FileChangeRecord()
                         {
-                            ChangeType = FileChange.FileChangeType.New,
+                            ChangeType = FileChangeRecord.FileChangeType.New,
                             NewPath = creationTime.Ticks.ToString(),
                             Path = relativePath,
                             UpdateTime = updateTime,
@@ -466,17 +466,17 @@ namespace CheckVersion
                         // Deleted then recreated file
                         if (latest[relativePath].CreationTime != creationTime)
                         {
-                            changes.DeletedFiles.Add(new FileChange()
+                            changes.DeletedFiles.Add(new FileChangeRecord()
                             {
-                                ChangeType = FileChange.FileChangeType.Deleted,
+                                ChangeType = FileChangeRecord.FileChangeType.Deleted,
                                 NewPath = null,
                                 Path = relativePath,
                                 UpdateTime = updateTime,
                                 Size = 0
                             });
-                            changes.NewFiles.Add(new FileChange()
+                            changes.NewFiles.Add(new FileChangeRecord()
                             {
-                                ChangeType = FileChange.FileChangeType.Recreated,
+                                ChangeType = FileChangeRecord.FileChangeType.Recreated,
                                 NewPath = creationTime.Ticks.ToString(),
                                 Path = relativePath,
                                 UpdateTime = updateTime,
@@ -484,9 +484,9 @@ namespace CheckVersion
                             });
                         }
                         else
-                            changes.UpdatedFiles.Add(new FileChange()
+                            changes.UpdatedFiles.Add(new FileChangeRecord()
                             {
-                                ChangeType = FileChange.FileChangeType.Updated,
+                                ChangeType = FileChangeRecord.FileChangeType.Updated,
                                 NewPath = null,
                                 Path = relativePath,
                                 UpdateTime = updateTime,
@@ -499,9 +499,9 @@ namespace CheckVersion
             }
             // Deleted files
             foreach (KeyValuePair<string, (DateTime UpdateTime, DateTime CreationTime)> item in latest)
-                changes.DeletedFiles.Add(new FileChange()
+                changes.DeletedFiles.Add(new FileChangeRecord()
                 {
-                    ChangeType = FileChange.FileChangeType.Deleted,
+                    ChangeType = FileChangeRecord.FileChangeType.Deleted,
                     NewPath = null,
                     Path = item.Key,
                     UpdateTime = storage.Commits.Count > 0 ? storage.Commits.Last().Time : DateTime.Now.ToUniversalTime(),
