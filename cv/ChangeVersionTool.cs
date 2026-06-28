@@ -14,14 +14,14 @@ using Console = cv.Types.ColorConsole;
 
 namespace cv
 {
-    public class ChangeVersionTool
+    public class CheckVersionTool
     {
         #region Properties
         public string RootPath { get; }
         public string RepoControlFolderName { get; }
         public string StorageFilePath { get; }
         public string IgnoreFilename { get; }
-        public ChangeVersionTool(string repoRootPath, string repoControlFolderName, string repoStorageFilePath, string ignoreFilename)
+        public CheckVersionTool(string repoRootPath, string repoControlFolderName, string repoStorageFilePath, string ignoreFilename)
         {
             RootPath = repoRootPath;
             RepoControlFolderName = repoControlFolderName;

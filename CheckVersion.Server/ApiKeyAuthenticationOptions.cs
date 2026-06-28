@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore.Authentication;
 
-namespace ChangeVersion.Server
+namespace CheckVersion.Server
 {
     public class ApiKeyAuthenticationOptions : AuthenticationSchemeOptions
     {

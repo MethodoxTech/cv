@@ -15,11 +15,11 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "UnitTests", "UnitTests", "{E09CEE5B-EC64-4C80-B181-9A54A2925DEA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ChangeVersion.UnitTests", "ChangeVersion.UnitTests\ChangeVersion.UnitTests.csproj", "{C83345B9-00C2-44E3-9BB9-81C04EF8735B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CheckVersion.UnitTests", "CheckVersion.UnitTests\CheckVersion.UnitTests.csproj", "{C83345B9-00C2-44E3-9BB9-81C04EF8735B}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Server", "Server", "{060E89B8-272C-4332-9BBA-E12E59C7FEAD}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ChangeVersion.Server", "ChangeVersion.Server\ChangeVersion.Server.csproj", "{F884D3B2-03A0-4941-94AF-0B76C7F9E30F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CheckVersion.Server", "CheckVersion.Server\CheckVersion.Server.csproj", "{F884D3B2-03A0-4941-94AF-0B76C7F9E30F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

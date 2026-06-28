@@ -1,4 +1,4 @@
-﻿# ChangeVersion.Server
+﻿# CheckVersion.Server
 
 Notice the server doesn't need to know anything about cv or `RepoStorage` at all, since its only job is to store "the latest". 
 

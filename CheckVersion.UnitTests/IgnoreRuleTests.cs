@@ -1,7 +1,7 @@
 using cv.Types;
 using cv;
 
-namespace ChangeVersion.UnitTests
+namespace CheckVersion.UnitTests
 {
     public class IgnoreRuleTests
     {
@@ -24,7 +24,7 @@ namespace ChangeVersion.UnitTests
         public void ShouldIgnore_VariousPatterns(string pattern, string path, bool expected)
         {
             IgnoreRule rule = new IgnoreRule(pattern);
-            bool ignored = ChangeVersionTool.ShouldIgnore(new[] { rule }, path);
+            bool ignored = CheckVersionTool.ShouldIgnore(new[] { rule }, path);
             Assert.Equal(expected, ignored);
         }
 
@@ -38,8 +38,8 @@ namespace ChangeVersion.UnitTests
                 new IgnoreRule("!foo.tmp")
             ];
 
-            Assert.False(ChangeVersionTool.ShouldIgnore(rules, "foo.tmp"));
-            Assert.True(ChangeVersionTool.ShouldIgnore(rules, "bar.tmp"));
+            Assert.False(CheckVersionTool.ShouldIgnore(rules, "foo.tmp"));
+            Assert.True(CheckVersionTool.ShouldIgnore(rules, "bar.tmp"));
         }
     }
 }

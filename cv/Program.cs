@@ -39,7 +39,7 @@ namespace cv
                 return;
             }
 
-            ChangeVersionTool tool = new(RepoRootPath, RepoControlFolderName, RepoStorageFilePath, IgnoreFilename);
+            CheckVersionTool tool = new(RepoRootPath, RepoControlFolderName, RepoStorageFilePath, IgnoreFilename);
             // Take action
             string action = args[0].ToLower();
             switch (action)
