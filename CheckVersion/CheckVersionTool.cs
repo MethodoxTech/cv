@@ -346,7 +346,7 @@ namespace CheckVersion
 
         #region Remote Sync
         /// <summary>
-        /// Push new & updated files to a remote ChangeVersion‐server.
+        /// Push new & updated files to a remote CheckVersion‐server.
         /// </summary>
         public async Task PushAsync(string serverUrl, string apiKey)
         {
@@ -379,7 +379,7 @@ namespace CheckVersion
             }
         }
         /// <summary>
-        /// Pull all files from remote ChangeVersion‐server, overwriting local copies.
+        /// Pull all files from remote CheckVersion‐server, overwriting local copies.
         /// </summary>
         public async Task PullAsync(string serverUrl, string apiKey)
         {
