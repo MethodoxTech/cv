@@ -1,17 +1,19 @@
-﻿using cv;
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
 
-namespace ChangeVersion.UnitTests
+namespace CheckVersion.UnitTests
 {
-    public class ChangeVersionToolIgnoreTests : IDisposable
+    public class CheckVersionToolIgnoreTests : IDisposable
     {
         private readonly string _tempIgnoreFile;
-        private readonly ChangeVersionTool _tool;
+        private readonly CheckVersionTool _tool;
 
-        public ChangeVersionToolIgnoreTests()
+        public CheckVersionToolIgnoreTests()
         {
             // rootPath and repoControlFolderName/storage paths are irrelevant here
             _tempIgnoreFile = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString() + ".ignore");
-            _tool = new ChangeVersionTool(
+            _tool = new CheckVersionTool(
                 repoRootPath: Directory.GetCurrentDirectory(),
                 repoControlFolderName: ".cv",
                 repoStorageFilePath: "dummy",
@@ -25,7 +27,7 @@ namespace ChangeVersion.UnitTests
             // Ensure file is gone
             if (File.Exists(_tempIgnoreFile)) File.Delete(_tempIgnoreFile);
 
-            List<cv.Types.IgnoreRule> rules = _tool.ReadIgnoreRules();
+            List<CheckVersion.Types.IgnoreRule> rules = _tool.ReadIgnoreRules();
             Assert.NotNull(rules);
             Assert.Empty(rules);
         }
@@ -45,7 +47,7 @@ namespace ChangeVersion.UnitTests
             ];
             File.WriteAllLines(_tempIgnoreFile, lines);
 
-            List<cv.Types.IgnoreRule> rules = [.. _tool.ReadIgnoreRules()];
+            List<CheckVersion.Types.IgnoreRule> rules = [.. _tool.ReadIgnoreRules()];
 
             // Expect three rules: "*.log", "!important.log", "data/*.csv"
             Assert.Equal(3, rules.Count);
@@ -56,10 +58,10 @@ namespace ChangeVersion.UnitTests
             Assert.False(rules[2].IsNegation);  // data/*.csv
 
             // And verify they actually ignore as expected:
-            Assert.True(ChangeVersionTool.ShouldIgnore(rules, "errors.log"));
-            Assert.False(ChangeVersionTool.ShouldIgnore(rules, "important.log"));
-            Assert.True(ChangeVersionTool.ShouldIgnore(rules, "data/report.csv"));
-            Assert.False(ChangeVersionTool.ShouldIgnore(rules, "data/report.txt"));
+            Assert.True(CheckVersionTool.ShouldIgnore(rules, "errors.log"));
+            Assert.False(CheckVersionTool.ShouldIgnore(rules, "important.log"));
+            Assert.True(CheckVersionTool.ShouldIgnore(rules, "data/report.csv"));
+            Assert.False(CheckVersionTool.ShouldIgnore(rules, "data/report.txt"));
         }
 
         public void Dispose()

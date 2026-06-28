@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace cv.Types
+namespace CheckVersion.Types
 {
-    public class FileChange
+    public class FileChangeRecord
     {
         public enum FileChangeType
         {
@@ -22,9 +22,9 @@ namespace cv.Types
     }
     public class Changelist
     {
-        public List<FileChange> NewFiles { get; set; } = [];
-        public List<FileChange> UpdatedFiles { get; set; } = [];
-        public List<FileChange> DeletedFiles { get; set; } = [];
-        public List<FileChange> MovedFiles { get; set; } = [];
+        public List<FileChangeRecord> NewFiles { get; set; } = [];
+        public List<FileChangeRecord> UpdatedFiles { get; set; } = [];
+        public List<FileChangeRecord> DeletedFiles { get; set; } = [];
+        public List<FileChangeRecord> MovedFiles { get; set; } = [];
     }
 }

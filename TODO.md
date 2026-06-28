@@ -1,6 +1,6 @@
 # README - TODO
 
-Add TODO file here to avoid the main README looking clustered.
+Project wise TODO items is edited here to avoid clustering the public facing main README.
 
 ## TODO
 
@@ -18,7 +18,7 @@ File synching:
 
 Server:
 
-- [x] Create file hosting server ~~that understands cv file changes~~
+- [x] Create file hosting server ~~that understands CheckVersion file changes~~
     * A fully functional server just needs to keep files and serve as FTP (for the "current" files) and nothing more.
 - [ ] Be able to check out latest and update remote folder with only needed files
 - [x] Be able to sync to any local

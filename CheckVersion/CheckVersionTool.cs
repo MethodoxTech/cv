@@ -1,5 +1,5 @@
-﻿using cv.Serialization;
-using cv.Types;
+﻿using CheckVersion.Serialization;
+using CheckVersion.Types;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -10,24 +10,41 @@ using System.Net.Http;
 using System.Net.Http.Json;
 using System.Threading.Tasks;
 using Color = System.Drawing.Color;
-using Console = cv.Types.ColorConsole;
+using Console = CheckVersion.Types.ColorConsole;
 
-namespace cv
+namespace CheckVersion
 {
-    public class ChangeVersionTool
+    public class CheckVersionTool
     {
         #region Properties
         public string RootPath { get; }
         public string RepoControlFolderName { get; }
-        public string StorageFilePath { get; }
+        public string ChangelogFilePath { get; }
         public string IgnoreFilename { get; }
-        public ChangeVersionTool(string repoRootPath, string repoControlFolderName, string repoStorageFilePath, string ignoreFilename)
+        public CheckVersionTool(string repoRootPath, string repoControlFolderName, string repoStorageFilePath, string ignoreFilename)
         {
             RootPath = repoRootPath;
             RepoControlFolderName = repoControlFolderName;
-            StorageFilePath = repoStorageFilePath;
+            ChangelogFilePath = repoStorageFilePath;
             IgnoreFilename = ignoreFilename;
         }
+        #endregion
+
+        #region Accessors
+        private string RepoControlFolderPath
+            => Path.IsPathRooted(RepoControlFolderName)
+            ? Path.GetFullPath(RepoControlFolderName)
+            : Path.GetFullPath(Path.Combine(RootPath, RepoControlFolderName));
+        private string ChangelogFullFilePath
+            => Path.IsPathRooted(ChangelogFilePath)
+            ? Path.GetFullPath(ChangelogFilePath)
+            : Path.GetFullPath(Path.Combine(RootPath, ChangelogFilePath));
+        private string IgnoreFullFilePath
+            => Path.IsPathRooted(IgnoreFilename)
+            ? Path.GetFullPath(IgnoreFilename)
+            : Path.GetFullPath(Path.Combine(RootPath, IgnoreFilename));
+        private string ChangelogArchivePath
+            => NormalizeArchivePath(Path.GetRelativePath(Path.GetFullPath(RootPath), ChangelogFullFilePath));
         #endregion
 
         #region Methods
@@ -36,16 +53,16 @@ namespace cv
         /// </summary>
         public void Log()
         {
-            if (!Directory.Exists(RepoControlFolderName))
+            if (!Directory.Exists(RepoControlFolderPath))
             {
                 Console.WriteLine(Color.Red, "No repo exists at current location");
                 return;
             }
 
-            RepoStorage storage = SerializationHelper.DeserializeFromFile(StorageFilePath);
+            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFullFilePath);
             for (int i = 0; i < storage.Commits.Count; i++)
             {
-                RepoStorage.Commit commit = storage.Commits[i];
+                RepoHistory.Commit commit = storage.Commits[i];
                 Console.Write($"{i}.".PadRight(3));
                 Console.Write(Color.Green, commit.Time.ToLocalTime().ToString() + " ");
                 Console.WriteLine(Color.White, commit.Message);
@@ -57,14 +74,14 @@ namespace cv
         /// </summary>
         public void Commit(string message)
         {
-            if (!Directory.Exists(RepoControlFolderName))
+            if (!Directory.Exists(RepoControlFolderPath))
                 Console.WriteLine(Color.Red, "No repo exists at current location");
             else
             {
                 Changelist changes = GetChanges();
 
-                RepoStorage storage = SerializationHelper.DeserializeFromFile(StorageFilePath);
-                List<FileChange> allChanges = changes.DeletedFiles
+                RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFullFilePath);
+                List<FileChangeRecord> allChanges = changes.DeletedFiles
                     .Union(changes.UpdatedFiles)
                     .Union(changes.MovedFiles)
                     .Union(changes.NewFiles) // Order matters, we must union DeletedFiles first because in the case of FileChangeType.Recreate, we want to maintain that relation
@@ -77,13 +94,13 @@ namespace cv
                     if (input == "n" || input == "no" || input == "f")
                         return;
                 }
-                storage.Commits.Add(new RepoStorage.Commit()
+                storage.Commits.Add(new RepoHistory.Commit()
                 {
                     Changes = allChanges,
                     Message = message,
                     Time = DateTime.Now.ToUniversalTime()
                 });
-                SerializationHelper.SerializeToFile(storage, StorageFilePath);
+                SerializationHelper.SerializeToFile(storage, ChangelogFullFilePath);
                 Console.WriteLine(Color.Goldenrod, $"Saved {allChanges.Count} {(allChanges.Count <= 1 ? "file" : "files")}.");
             }
         }
@@ -92,12 +109,12 @@ namespace cv
         /// </summary>
         public void Init()
         {
-            if (Directory.Exists(RepoControlFolderName))
+            if (Directory.Exists(RepoControlFolderPath))
                 Console.WriteLine(Color.Red, "A CV repo already exists at this location.");
             else
             {
-                Directory.CreateDirectory(RepoControlFolderName);
-                SerializationHelper.SerializeToFile(new RepoStorage(), StorageFilePath);
+                Directory.CreateDirectory(RepoControlFolderPath);
+                SerializationHelper.SerializeToFile(new RepoHistory(), ChangelogFullFilePath);
                 Console.WriteLine(Color.GreenYellow, $"Repo initialized at: {RootPath}");
             }
         }
@@ -106,7 +123,7 @@ namespace cv
         /// </summary>
         public void Status()
         {
-            if (!Directory.Exists(RepoControlFolderName))
+            if (!Directory.Exists(RepoControlFolderPath))
             {
                 Console.WriteLine(Color.Red, "No repo exists at current location");
                 return;
@@ -114,10 +131,10 @@ namespace cv
 
             Changelist changes = GetChanges();
             Console.WriteLine(Color.Goldenrod, $"# New: {changes.NewFiles.Count}");
-            foreach (FileChange file in changes.NewFiles)
+            foreach (FileChangeRecord file in changes.NewFiles)
             {
                 Console.Write(Color.Green, $"{file.Path} ");
-                if (file.ChangeType == FileChange.FileChangeType.Recreated)
+                if (file.ChangeType == FileChangeRecord.FileChangeType.Recreated)
                 {
                     Console.Write(Color.DarkGray, file.UpdateTime.ToLocalTime());
                     Console.WriteLine(Color.Yellow, " [Recreated]");
@@ -127,14 +144,14 @@ namespace cv
             }
 
             Console.WriteLine(Color.Goldenrod, $"# Updated: {changes.UpdatedFiles.Count}");
-            foreach (FileChange file in changes.UpdatedFiles)
+            foreach (FileChangeRecord file in changes.UpdatedFiles)
             {
                 Console.Write(Color.YellowGreen, $"{file.Path} ");
                 Console.WriteLine(Color.DarkGray, file.UpdateTime.ToLocalTime());
             }
 
             Console.WriteLine(Color.Goldenrod, $"# Moved: {changes.MovedFiles.Count}");
-            foreach (FileChange file in changes.MovedFiles)
+            foreach (FileChangeRecord file in changes.MovedFiles)
             {
                 Console.Write(Color.SkyBlue, $"{file.Path} ");
                 Console.Write(Color.Yellow, $"-> ");
@@ -143,7 +160,7 @@ namespace cv
             }
 
             Console.WriteLine(Color.Goldenrod, $"# Deleted: {changes.DeletedFiles.Count}");
-            foreach (FileChange file in changes.DeletedFiles)
+            foreach (FileChangeRecord file in changes.DeletedFiles)
             {
                 Console.Write(Color.DarkRed, $"{file.Path} ");
                 Console.WriteLine(Color.DarkGray, file.UpdateTime.ToLocalTime());
@@ -155,14 +172,14 @@ namespace cv
         /// </summary>
         public void List()
         {
-            if (!Directory.Exists(RepoControlFolderName))
+            if (!Directory.Exists(RepoControlFolderPath))
             {
                 Console.WriteLine(Color.Red, "No repo exists at current location");
                 return;
             }
 
             // Load tracked files
-            RepoStorage storage = SerializationHelper.DeserializeFromFile(StorageFilePath);
+            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFullFilePath);
             List<string> tracked = storage
                 .GetLatestFiles()
                 .Keys
@@ -195,13 +212,13 @@ namespace cv
                 Console.WriteLine();
                 Console.WriteLine(Color.Goldenrod, "# Uncommitted changes:");
 
-                foreach (FileChange f in changes.NewFiles)
+                foreach (FileChangeRecord f in changes.NewFiles)
                     Console.WriteLine(Color.Green, $"New:     {f.Path}");
-                foreach (FileChange f in changes.UpdatedFiles)
+                foreach (FileChangeRecord f in changes.UpdatedFiles)
                     Console.WriteLine(Color.YellowGreen, $"Updated: {f.Path}");
-                foreach (FileChange f in changes.MovedFiles)
+                foreach (FileChangeRecord f in changes.MovedFiles)
                     Console.WriteLine(Color.SkyBlue, $"Moved:   {f.Path} → {f.NewPath}");
-                foreach (FileChange f in changes.DeletedFiles)
+                foreach (FileChangeRecord f in changes.DeletedFiles)
                     Console.WriteLine(Color.DarkRed, $"Deleted: {f.Path}");
             }
         }
@@ -210,7 +227,7 @@ namespace cv
         /// </summary>
         public void Gather(string outputFolder)
         {
-            if (!Directory.Exists(RepoControlFolderName))
+            if (!Directory.Exists(RepoControlFolderPath))
             {
                 Console.WriteLine(Color.Red, "No repo exists at current location");
                 return;
@@ -244,7 +261,11 @@ namespace cv
                 Directory.CreateDirectory(fullOutputFolder);
             }
 
-            RepoStorage storage = SerializationHelper.DeserializeFromFile(StorageFilePath);
+            Changelist changes = GetChanges();
+            if (HasUncommittedChanges(changes))
+                Console.WriteLine(Color.Yellow, "Warning: repo has uncommitted changes. Gather will copy current tracked file contents; new untracked files are omitted.");
+
+            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFullFilePath);
             List<string> tracked = storage
                 .GetLatestFiles()
                 .Keys
@@ -283,7 +304,7 @@ namespace cv
         /// </summary>
         public void Archive(string outputZipFile)
         {
-            if (!Directory.Exists(RepoControlFolderName))
+            if (!Directory.Exists(RepoControlFolderPath))
             {
                 Console.WriteLine(Color.Red, "No repo exists at current location");
                 return;
@@ -313,7 +334,11 @@ namespace cv
                 return;
             }
 
-            RepoStorage storage = SerializationHelper.DeserializeFromFile(StorageFilePath);
+            Changelist changes = GetChanges();
+            if (HasUncommittedChanges(changes))
+                Console.WriteLine(Color.Yellow, "Warning: repo has uncommitted changes. Archive will copy current tracked file contents; new untracked files are omitted.");
+
+            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFullFilePath);
             List<string> tracked = storage
                 .GetLatestFiles()
                 .Keys
@@ -336,17 +361,195 @@ namespace cv
             foreach (string relativePath in tracked)
             {
                 string sourcePath = Path.Combine(RootPath, relativePath);
-                archive.CreateEntryFromFile(sourcePath, relativePath, CompressionLevel.Optimal);
+                archive.CreateEntryFromFile(sourcePath, NormalizeArchivePath(relativePath), CompressionLevel.Optimal);
                 Console.WriteLine(Color.Green, $"Archived {relativePath}");
             }
 
             Console.WriteLine(Color.GreenYellow, $"Archive created: {fullZipPath}");
         }
+        /// <summary>
+        /// Create a restorable checkpoint archive containing the version history and all currently tracked files.
+        /// </summary>
+        public void CreateCheckpoint(string targetZipFile)
+        {
+            if (!Directory.Exists(RepoControlFolderPath))
+            {
+                Console.WriteLine(Color.Red, "No repo exists at current location");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(targetZipFile))
+            {
+                Console.WriteLine(Color.Red, "Target zip file is required.");
+                return;
+            }
+
+            Changelist changes = GetChanges();
+            if (HasUncommittedChanges(changes))
+            {
+                Console.WriteLine(Color.Red, "Cannot create checkpoint because the repo has uncommitted changes.");
+                return;
+            }
+
+            string fullZipPath = Path.GetFullPath(targetZipFile);
+            if (Directory.Exists(fullZipPath))
+            {
+                Console.WriteLine(Color.Red, "Target zip path points to a folder, not a file.");
+                return;
+            }
+
+            string? zipDirectory = Path.GetDirectoryName(fullZipPath);
+            if (!string.IsNullOrEmpty(zipDirectory))
+                Directory.CreateDirectory(zipDirectory);
+
+            if (File.Exists(fullZipPath))
+            {
+                Console.WriteLine(Color.Red, "Target zip file already exists.");
+                return;
+            }
+
+            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFullFilePath);
+            List<string> tracked = storage
+                .GetLatestFiles()
+                .Keys
+                .OrderBy(p => p)
+                .ToList();
+
+            List<string> missingFiles = tracked
+                .Where(p => !File.Exists(Path.Combine(RootPath, p)))
+                .ToList();
+
+            if (missingFiles.Count > 0)
+            {
+                Console.WriteLine(Color.Red, "Cannot create checkpoint because some tracked files are missing:");
+                foreach (string missing in missingFiles)
+                    Console.WriteLine(Color.Yellow, missing);
+                return;
+            }
+
+            using ZipArchive archive = ZipFile.Open(fullZipPath, ZipArchiveMode.Create);
+
+            archive.CreateEntryFromFile(ChangelogFullFilePath, ChangelogArchivePath, CompressionLevel.Optimal);
+            Console.WriteLine(Color.Green, $"Checkpointed {Program.RepoStorageFilePath}");
+
+            foreach (string relativePath in tracked)
+            {
+                string sourcePath = Path.Combine(RootPath, relativePath);
+                archive.CreateEntryFromFile(sourcePath, NormalizeArchivePath(relativePath), CompressionLevel.Optimal);
+                Console.WriteLine(Color.Green, $"Checkpointed {relativePath}");
+            }
+
+            Console.WriteLine(Color.GreenYellow, $"Checkpoint created: {fullZipPath}");
+        }
+        /// <summary>
+        /// Restore a checkpoint archive into a clean folder.
+        /// </summary>
+        public void RestoreCheckpoint(string sourceZipFile)
+        {
+            if (Directory.Exists(RepoControlFolderPath))
+            {
+                Console.WriteLine(Color.Red, "Cannot restore checkpoint because a CV repo already exists at this location.");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(sourceZipFile))
+            {
+                Console.WriteLine(Color.Red, "Source zip file is required.");
+                return;
+            }
+
+            string fullZipPath = Path.GetFullPath(sourceZipFile);
+            if (!File.Exists(fullZipPath))
+            {
+                Console.WriteLine(Color.Red, "Source zip file does not exist.");
+                return;
+            }
+
+            string rootFullPath = Path.GetFullPath(RootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (!IsCleanRestoreFolder(rootFullPath, fullZipPath))
+            {
+                Console.WriteLine(Color.Red, "Current folder must be empty before restoring a checkpoint, except for the checkpoint file itself.");
+                return;
+            }
+
+            using ZipArchive archive = ZipFile.OpenRead(fullZipPath);
+
+            bool hasHistory = archive.Entries.Any(e => NormalizeArchivePath(e.FullName) == NormalizeArchivePath(Program.RepoStorageFilePath));
+            if (!hasHistory)
+            {
+                Console.WriteLine(Color.Red, $"Invalid checkpoint: missing {Program.RepoStorageFilePath}.");
+                return;
+            }
+
+            foreach (ZipArchiveEntry entry in archive.Entries)
+            {
+                string entryName = NormalizeArchivePath(entry.FullName);
+                if (string.IsNullOrWhiteSpace(entryName))
+                    continue;
+
+                string destinationPath;
+                try
+                {
+                    destinationPath = GetSafeExtractionPath(rootFullPath, entryName);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    Console.WriteLine(Color.Red, ex.Message);
+                    return;
+                }
+
+                if (entryName.EndsWith("/", StringComparison.Ordinal))
+                {
+                    if (File.Exists(destinationPath))
+                    {
+                        Console.WriteLine(Color.Red, $"Cannot restore because a file already exists where a folder is needed: {entryName}");
+                        return;
+                    }
+
+                    Directory.CreateDirectory(destinationPath);
+                    continue;
+                }
+
+                if (File.Exists(destinationPath) || Directory.Exists(destinationPath))
+                {
+                    Console.WriteLine(Color.Red, $"Cannot restore because destination already exists: {entryName}");
+                    return;
+                }
+            }
+
+            foreach (ZipArchiveEntry entry in archive.Entries)
+            {
+                string entryName = NormalizeArchivePath(entry.FullName);
+                if (string.IsNullOrWhiteSpace(entryName))
+                    continue;
+
+                string destinationPath = GetSafeExtractionPath(rootFullPath, entryName);
+
+                if (entryName.EndsWith("/", StringComparison.Ordinal))
+                {
+                    Directory.CreateDirectory(destinationPath);
+                    continue;
+                }
+
+                string? destinationDirectory = Path.GetDirectoryName(destinationPath);
+                if (!string.IsNullOrEmpty(destinationDirectory))
+                    Directory.CreateDirectory(destinationDirectory);
+
+                entry.ExtractToFile(destinationPath, overwrite: false);
+                Console.WriteLine(Color.Green, $"Restored {entryName}");
+            }
+
+            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFullFilePath);
+            RestoreTrackedFileTimes(storage);
+
+            int trackedCount = storage.GetLatestFiles().Count;
+            Console.WriteLine(Color.GreenYellow, $"Checkpoint restored: {trackedCount} {(trackedCount == 1 ? "file" : "files")} tracked.");
+        }
         #endregion
 
         #region Remote Sync
         /// <summary>
-        /// Push new & updated files to a remote cv‐server.
+        /// Push new & updated files to a remote CheckVersion‐server.
         /// </summary>
         public async Task PushAsync(string serverUrl, string apiKey)
         {
@@ -354,7 +557,7 @@ namespace cv
             client.DefaultRequestHeaders.Add("X-Api-Key", apiKey);
 
             Changelist changes = GetChanges();
-            List<FileChange> toUpload = changes.NewFiles
+            List<FileChangeRecord> toUpload = changes.NewFiles
                 .Concat(changes.UpdatedFiles)
                 .ToList();
 
@@ -364,7 +567,7 @@ namespace cv
                 return;
             }
 
-            foreach (FileChange? change in toUpload)
+            foreach (FileChangeRecord? change in toUpload)
             {
                 string local = Path.Combine(RootPath, change.Path);
                 await using FileStream fs = File.OpenRead(local);
@@ -379,7 +582,7 @@ namespace cv
             }
         }
         /// <summary>
-        /// Pull all files from remote cv‐server, overwriting local copies.
+        /// Pull all files from remote CheckVersion‐server, overwriting local copies.
         /// </summary>
         public async Task PullAsync(string serverUrl, string apiKey)
         {
@@ -418,45 +621,44 @@ namespace cv
         #region Helpers
         private Changelist GetChanges()
         {
-            if (!Directory.Exists(RepoControlFolderName))
+            if (!Directory.Exists(RepoControlFolderPath))
                 throw new InvalidOperationException("Must be inside a CV repo.");
 
-            RepoStorage storage = SerializationHelper.DeserializeFromFile(StorageFilePath);
+            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFullFilePath);
             Dictionary<string, (DateTime UpdateTime, DateTime CreationTime)> latest = storage.GetLatestFiles();
-            Dictionary<string, DateTime> actual = GetActualFiles();
+            Dictionary<string, (DateTime UpdateTime, DateTime CreationTime, long Size)> actual = GetActualFiles();
             DateTime lastCommit = storage.Commits.Count > 0 ? storage.Commits.Last().Time : DateTime.MinValue;
 
             Changelist changes = new();
-            foreach ((string relativePath, DateTime updateTime) in actual)
+            foreach ((string relativePath, (DateTime updateTime, DateTime creationTime, long size)) in actual)
             {
                 // New files
                 if (!latest.ContainsKey(relativePath))
                 {
                     // Moved files
-                    if (File.GetCreationTimeUtc(relativePath) < lastCommit
-                        && latest.Any(f => f.Value.CreationTime == File.GetCreationTimeUtc(relativePath)))
+                    if (creationTime < lastCommit && latest.Any(f => f.Value.CreationTime == creationTime))
                     {
-                        string movedFile = latest.First(f => f.Value.CreationTime == File.GetCreationTimeUtc(relativePath)).Key;
+                        string movedFile = latest.First(f => f.Value.CreationTime == creationTime).Key;
 
-                        changes.MovedFiles.Add(new FileChange()
+                        changes.MovedFiles.Add(new FileChangeRecord()
                         {
-                            ChangeType = FileChange.FileChangeType.Moved,
+                            ChangeType = FileChangeRecord.FileChangeType.Moved,
                             NewPath = relativePath,
                             Path = movedFile,
                             UpdateTime = updateTime,
-                            Size = new FileInfo(relativePath).Length
+                            Size = size
                         });
 
                         latest.Remove(movedFile);
                     }
                     else
-                        changes.NewFiles.Add(new FileChange()
+                        changes.NewFiles.Add(new FileChangeRecord()
                         {
-                            ChangeType = FileChange.FileChangeType.New,
-                            NewPath = File.GetCreationTimeUtc(relativePath).Ticks.ToString(),
+                            ChangeType = FileChangeRecord.FileChangeType.New,
+                            NewPath = creationTime.Ticks.ToString(),
                             Path = relativePath,
                             UpdateTime = updateTime,
-                            Size = new FileInfo(relativePath).Length
+                            Size = size
                         });
                 }
                 // Updated files
@@ -465,33 +667,33 @@ namespace cv
                     if (updateTime > latest[relativePath].UpdateTime)
                     {
                         // Deleted then recreated file
-                        if (latest[relativePath].CreationTime != File.GetCreationTimeUtc(relativePath))
+                        if (latest[relativePath].CreationTime != creationTime)
                         {
-                            changes.DeletedFiles.Add(new FileChange()
+                            changes.DeletedFiles.Add(new FileChangeRecord()
                             {
-                                ChangeType = FileChange.FileChangeType.Deleted,
+                                ChangeType = FileChangeRecord.FileChangeType.Deleted,
                                 NewPath = null,
                                 Path = relativePath,
                                 UpdateTime = updateTime,
                                 Size = 0
                             });
-                            changes.NewFiles.Add(new FileChange()
+                            changes.NewFiles.Add(new FileChangeRecord()
                             {
-                                ChangeType = FileChange.FileChangeType.Recreated,
-                                NewPath = File.GetCreationTimeUtc(relativePath).Ticks.ToString(),
+                                ChangeType = FileChangeRecord.FileChangeType.Recreated,
+                                NewPath = creationTime.Ticks.ToString(),
                                 Path = relativePath,
                                 UpdateTime = updateTime,
-                                Size = new FileInfo(relativePath).Length
+                                Size = size
                             });
                         }
                         else
-                            changes.UpdatedFiles.Add(new FileChange()
+                            changes.UpdatedFiles.Add(new FileChangeRecord()
                             {
-                                ChangeType = FileChange.FileChangeType.Updated,
+                                ChangeType = FileChangeRecord.FileChangeType.Updated,
                                 NewPath = null,
                                 Path = relativePath,
                                 UpdateTime = updateTime,
-                                Size = new FileInfo(relativePath).Length
+                                Size = size
                             });
                     }
 
@@ -500,9 +702,9 @@ namespace cv
             }
             // Deleted files
             foreach (KeyValuePair<string, (DateTime UpdateTime, DateTime CreationTime)> item in latest)
-                changes.DeletedFiles.Add(new FileChange()
+                changes.DeletedFiles.Add(new FileChangeRecord()
                 {
-                    ChangeType = FileChange.FileChangeType.Deleted,
+                    ChangeType = FileChangeRecord.FileChangeType.Deleted,
                     NewPath = null,
                     Path = item.Key,
                     UpdateTime = storage.Commits.Count > 0 ? storage.Commits.Last().Time : DateTime.Now.ToUniversalTime(),
@@ -512,27 +714,39 @@ namespace cv
             return changes;
         }
         /// <summary>
-        /// Get all the files that we recognize that's currently under version tracking
+        /// Get all the files that we recognize that's currently available for version tracking
         /// </summary>
-        private Dictionary<string, DateTime> GetActualFiles()
+        private Dictionary<string, (DateTime UpdateTime, DateTime CreationTime, long Size)> GetActualFiles()
         {
-            Dictionary<string, DateTime> entries = [];
-            EnumerateAndAddFileEntry(RootPath);
+            Dictionary<string, (DateTime UpdateTime, DateTime CreationTime, long Size)> entries = [];
+            List<IgnoreRule> ignoreRules = ReadIgnoreRules();
+
+            string rootFullPath = Path.GetFullPath(RootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            string controlFolderFullPath = RepoControlFolderPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+            EnumerationOptions options = new()
+            {
+                IgnoreInaccessible = true,
+                RecurseSubdirectories = false,
+                ReturnSpecialDirectories = false
+            };
+
+            EnumerateAndAddFileEntry(new DirectoryInfo(rootFullPath));
             return entries;
 
-            void EnumerateAndAddFileEntry(string currentFolder)
+            void EnumerateAndAddFileEntry(DirectoryInfo currentFolder)
             {
-                List<IgnoreRule> ignoreRules = ReadIgnoreRules();
-
                 // Recurse into subfolders unless ignored
-                foreach (string subFolder in Directory.EnumerateDirectories(currentFolder))
+                foreach (DirectoryInfo subFolder in currentFolder.EnumerateDirectories("*", options))
                 {
-                    // Compute the relative path for matching
-                    string relativeFolder = Path.GetRelativePath(RootPath, subFolder).Replace('\\', '/');
+                    string subFolderFullPath = subFolder.FullName.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
                     // Skip control folder
-                    if (currentFolder == RootPath && string.Equals(Path.GetFileName(subFolder), RepoControlFolderName, StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(subFolderFullPath, controlFolderFullPath, StringComparison.OrdinalIgnoreCase))
                         continue;
+
+                    // Compute the relative path for matching
+                    string relativeFolder = Path.GetRelativePath(rootFullPath, subFolder.FullName).Replace('\\', '/');
 
                     // If the ignore rules say to ignore this directory, don't even recurse into it
                     if (ShouldIgnore(ignoreRules, relativeFolder))
@@ -541,21 +755,21 @@ namespace cv
                     EnumerateAndAddFileEntry(subFolder);
                 }
                 // Enumerate files in non‐ignored folders
-                foreach (string file in Directory.EnumerateFiles(currentFolder))
+                foreach (FileInfo file in currentFolder.EnumerateFiles("*", options))
                 {
-                    string relativePath = Path.GetRelativePath(RootPath, file).Replace('\\', '/');
-                    if (ignoreRules == null || !ShouldIgnore(ignoreRules, relativePath))
-                        entries[relativePath] = File.GetLastWriteTimeUtc(file);
+                    string relativePath = Path.GetRelativePath(rootFullPath, file.FullName).Replace('\\', '/');
+                    if (!ShouldIgnore(ignoreRules, relativePath))
+                        entries[relativePath] = (file.LastWriteTimeUtc, file.CreationTimeUtc, file.Length);
                 }
             }
         }
         public List<IgnoreRule> ReadIgnoreRules()
         {
-            if (!File.Exists(IgnoreFilename))
+            if (!File.Exists(IgnoreFullFilePath))
                 return [];
 
             // Skip empty lines and lines with comments
-            return File.ReadAllLines(IgnoreFilename)
+            return File.ReadAllLines(IgnoreFullFilePath)
                 .Select(line => line.Trim())
                 .Where(line => line.Length > 0 && !line.StartsWith("#"))
                 .Select(line => new IgnoreRule(line))
@@ -577,6 +791,51 @@ namespace cv
             }
 
             return ignored.GetValueOrDefault(false);
+        }
+        private static bool HasUncommittedChanges(Changelist changes)
+            => changes.NewFiles.Any() ||
+               changes.UpdatedFiles.Any() ||
+               changes.MovedFiles.Any() ||
+               changes.DeletedFiles.Any();
+        private static string NormalizeArchivePath(string path)
+            => path.Replace('\\', '/').TrimStart('/');
+        private static bool IsCleanRestoreFolder(string rootFullPath, string sourceZipFullPath)
+        {
+            foreach (string entry in Directory.EnumerateFileSystemEntries(rootFullPath))
+            {
+                string entryFullPath = Path.GetFullPath(entry).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                string sourceFullPath = sourceZipFullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+                if (string.Equals(entryFullPath, sourceFullPath, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                return false;
+            }
+
+            return true;
+        }
+        private void RestoreTrackedFileTimes(RepoHistory storage)
+        {
+            foreach ((string relativePath, (DateTime updateTime, DateTime creationTime)) in storage.GetLatestFiles())
+            {
+                string fullPath = Path.Combine(RootPath, relativePath);
+                if (!File.Exists(fullPath))
+                    continue;
+
+                File.SetCreationTimeUtc(fullPath, creationTime);
+                File.SetLastWriteTimeUtc(fullPath, updateTime);
+            }
+        }
+        private static string GetSafeExtractionPath(string rootFullPath, string entryName)
+        {
+            string normalizedName = entryName.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
+            string destinationPath = Path.GetFullPath(Path.Combine(rootFullPath, normalizedName));
+            string rootWithSeparator = rootFullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+
+            if (!destinationPath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"Unsafe checkpoint entry path: {entryName}");
+
+            return destinationPath;
         }
         #endregion
     }

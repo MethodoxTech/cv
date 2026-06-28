@@ -1,11 +1,17 @@
 ﻿using System;
 using System.Drawing;
 
-namespace cv.Types
+namespace CheckVersion.Types
 {
     /// <summary>
-    /// Print colorful console texts; A drop-in replacement for Colorful.Console, with some interface change for clarity
+    /// Print colorful console texts; A drop-in replacement for `Colorful.Console`, with some interface change for clarity.
     /// </summary>
+    /// <remarks>
+    /// Version: 0.1
+    /// 
+    /// Changelog:
+    /// * v0.1: Initial tracking.
+    /// </remarks>
     public static class ColorConsole
     {
         #region Methods

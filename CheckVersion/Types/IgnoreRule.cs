@@ -1,6 +1,6 @@
 ﻿using System.Text.RegularExpressions;
 
-namespace cv.Types
+namespace CheckVersion.Types
 {
     public class IgnoreRule
     {
@@ -30,32 +30,27 @@ namespace cv.Types
             bool hasSlash = pattern.Contains('/');
 
             string regexBody = Regex.Escape(pattern)
-                .Replace(@"\*\*/", @"(.*/)?")
+                .Replace(@"\*\*/", @"(?:.*/)?")
                 .Replace(@"\*\*", @".*")
                 .Replace(@"\*", @"[^/]*")
                 .Replace(@"\?", @"[^/]");
 
             string prefix;
-            if (anchored)
+            if (anchored || hasSlash)
             {
-                // Must match from repo root
+                // Patterns containing slash are relative to repo root unless they explicitly use **/.
                 prefix = "^";
-            }
-            else if (hasSlash)
-            {
-                // Unanchored pattern containing slash can match anywhere
-                prefix = @"^(?:.*/)?";
             }
             else
             {
-                // Bare name like "bin" or "obj" matches any path segment
+                // Bare names like "bin", "obj", or "*.txt" can match any path segment.
                 prefix = @"^(?:|.*/)";
             }
 
             string suffix = directoryOnly
                 ? @"(?:/.*)?$"   // directory and everything under it
                 : hasSlash || anchored
-                    ? @"(?:$|/.*$)" // exact path or children if directory
+                    ? @"$"
                     : @"(?:$|/.*$)"; // bare segment or anything under it
 
             _regex = new Regex(
