@@ -316,4 +316,4 @@ Use `checkpoint create` when you need both the tracked files and `.cv` history.
 * v1.0.5: Update ignore rule to ignore all matching folders. Fix serialization issue.
 * v1.0.6: Improve `list`; Implement `gather` and `archive`.
 * v1.1.0: Upgrade to .Net 10; Significantly improve performance on large folders.
-* v1.1.1: Support `checkpoint` commands.
+* v1.1.1: Support `checkpoint` commands; Improve ignore rule handling.

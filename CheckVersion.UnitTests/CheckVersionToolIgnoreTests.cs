@@ -1,4 +1,8 @@
-﻿namespace CheckVersion.UnitTests
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+
+namespace CheckVersion.UnitTests
 {
     public class CheckVersionToolIgnoreTests : IDisposable
     {
