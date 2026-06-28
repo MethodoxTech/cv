@@ -97,7 +97,7 @@ namespace cv
         private static void PrintDetailedHelp()
         {
             const string helpText = """
-                cv — Change Version CLI
+                cv — Check Version CLI
 
                 Usage:
                   cv <command> [options]
@@ -123,7 +123,7 @@ namespace cv
             Console.WriteLine(Color.Goldenrod, helpText);
         }
         private static void PrintVersion()
-            => Console.WriteLine("cv — Change Version CLI v1.0.6");
+            => Console.WriteLine("cv — Check Version CLI v1.0.6");
         #endregion
     }
 }

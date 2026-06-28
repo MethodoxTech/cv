@@ -1,4 +1,4 @@
-# Change Version (CLI)
+# Check Version (CLI)
 
 Version: v1.0.4
 
