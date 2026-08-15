@@ -1,6 +1,6 @@
 # Check Version CLI
 
-Version: v1.1.1
+Version: v1.2.0
 
 Check Version (`cv`) is a small file-version tracking CLI designed for simple local source snapshots. It tracks file paths, update times, creation times, file sizes, move/recreate/delete information, and commit history inside a local `.cv` folder.
 
@@ -33,8 +33,8 @@ cv log
 File operation commands:
 
 ```text
-cv gather <output folder>
-cv archive <output zip file>
+cv gather <output folder> [--subfolder <path>] [--full-paths]
+cv archive <output zip file> [--subfolder <path>] [--full-paths]
 ```
 
 Checkpoint commands:
@@ -130,7 +130,7 @@ cv log
 Copies all currently tracked files into an empty output folder while preserving directory structure.
 
 ```text
-cv gather <output folder>
+cv gather <output folder> [--subfolder <path>] [--full-paths]
 ```
 
 This does not copy `.cv` history.
@@ -142,12 +142,47 @@ If the repo has uncommitted changes, `gather` warns but continues. It copies the
 Creates a zip archive containing all currently tracked files.
 
 ```text
-cv archive <output zip file>
+cv archive <output zip file> [--subfolder <path>] [--full-paths]
 ```
 
 This does not include `.cv` history.
 
 If the repo has uncommitted changes, `archive` warns but continues. It archives the current contents of tracked files from disk. New untracked files are omitted.
+
+### Packing a subfolder
+
+Both `gather` and `archive` accept a scope, so a large repo that is CV-tracked as a whole can still hand over just one folder.
+
+```text
+cv archive ../art.zip --subfolder art
+cv archive ../art.zip -s art
+```
+
+Only tracked files under that folder are packed, and the folder becomes the root of the output:
+
+```text
+Repo                      Zip
+art/textures/tree.png ->  textures/tree.png
+art/models/hero.fbx   ->  models/hero.fbx
+engine/src/main.cpp   ->  (not packed)
+```
+
+Add `--full-paths` to keep the repo-relative layout instead:
+
+```text
+cv archive ../art.zip --subfolder art --full-paths
+```
+
+```text
+Repo                      Zip
+art/textures/tree.png ->  art/textures/tree.png
+```
+
+The scope may be given repo-relative (`art/textures`) or as an absolute path inside the repo. It must not point outside the repo or into `.cv`.
+
+Note that scoped packing only inspects the files it is about to pack, so a tracked file missing elsewhere in the repo does not block packing an unrelated subfolder.
+
+`checkpoint create` deliberately has no scope option: a checkpoint carries `.cv/versions`, whose records are repo-root relative, so a partial checkpoint would restore into a repo that immediately reports every excluded file as deleted.
 
 ### `checkpoint create`
 
@@ -290,6 +325,43 @@ Supported behavior includes:
 directory/ directory-only style patterns
 ```
 
+#### `.cvignore` in subfolders
+
+A `.cvignore` may be placed in any subfolder, not just the repo root, and works the way nested `.gitignore` files do.
+
+Patterns in a nested file are interpreted relative to that file's own folder:
+
+```text
+art/.cvignore
+```
+
+```.cvignore
+/raw
+*.psd
+```
+
+matches `art/raw/...` and `art/**/*.psd`, and leaves `raw/` at the repo root alone.
+
+Precedence, again mirroring git:
+
+```text
+Within one file, the last matching pattern wins.
+A deeper file overrides a shallower one, so a nested `!pattern` can re-include what the root ignored.
+A file inside an ignored folder cannot be re-included, because that folder is never descended into.
+```
+
+Example — the root hides every `.bin`, but one folder ships them:
+
+```text
+.cvignore            ->  *.bin
+shipped/.cvignore    ->  !*.bin
+```
+
+```text
+data/a.bin      ignored
+shipped/b.bin   tracked
+```
+
 ## Notes and Limitations
 
 Check Version is not a Git replacement. It is designed for simple local version tracking and lightweight source snapshots.
@@ -304,6 +376,22 @@ Use `archive` or `gather` when you only need the currently tracked source files 
 
 Use `checkpoint create` when you need both the tracked files and `.cv` history.
 
+## Hosting the tool
+
+`CheckVersionTool` is usable outside the CLI. It takes an optional `ICheckVersionOutput`, which receives the same colored progress text the CLI prints, and answers the one yes/no question the tool can ask (empty commit). `ConsoleOutput` is the default; `CollectingOutput` buffers to memory.
+
+For anything a host wants to render itself, prefer the structured accessors over parsing printed text:
+
+```text
+RepoExists
+GetChangelist()
+GetHistory()
+GetTrackedFiles()
+GetTrackedFolders()
+```
+
+See `CheckVersion.GUI/README.md` for a front-end built on exactly this surface.
+
 ## References
 
 * Official Wiki: https://wiki.methodox.io/en/Utilities/CLI/cv
@@ -317,3 +405,4 @@ Use `checkpoint create` when you need both the tracked files and `.cv` history.
 * v1.0.6: Improve `list`; Implement `gather` and `archive`.
 * v1.1.0: Upgrade to .Net 10; Significantly improve performance on large folders.
 * v1.1.1: Support `checkpoint` commands; Improve ignore rule handling.
+* v1.2.0: Support packing a single subfolder with `gather`/`archive`; Support `.cvignore` in subfolders; Add the `CheckVersion.GUI` desktop front-end.

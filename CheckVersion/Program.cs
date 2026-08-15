@@ -1,4 +1,6 @@
-﻿using System;
+using CheckVersion.Types;
+using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using Color = System.Drawing.Color;
@@ -9,10 +11,11 @@ namespace CheckVersion
     internal class Program
     {
         #region Constants
+        internal const string Version = "1.2.0";
         private static readonly string RepoRootPath = Directory.GetCurrentDirectory();
-        internal static readonly string RepoStorageFilePath = Path.Combine(RepoControlFolderName, "versions");
-        internal const string RepoControlFolderName = ".cv";
-        internal const string IgnoreFilename = ".cvignore";
+        internal static readonly string RepoStorageFilePath = RepoDefaults.StorageFilePath;
+        internal const string RepoControlFolderName = RepoDefaults.ControlFolderName;
+        internal const string IgnoreFilename = RepoDefaults.IgnoreFilename;
         #endregion
 
         #region Methods
@@ -68,16 +71,12 @@ namespace CheckVersion
                     tool.Log();
                     break;
                 case "gather":
-                    if (args.Length < 2)
-                        Console.WriteLine(Color.Red, "Usage: gather <output folder>");
-                    else
-                        tool.Gather(args[1]);
+                    RunPackCommand(args, "gather", "Usage: cv gather <output folder> [--subfolder <path>] [--full-paths]",
+                        (target, subfolder, preserveRepoPaths) => tool.Gather(target, subfolder, preserveRepoPaths));
                     break;
                 case "archive":
-                    if (args.Length < 2)
-                        Console.WriteLine(Color.Red, "Usage: archive <output zip file>");
-                    else
-                        tool.Archive(args[1]);
+                    RunPackCommand(args, "archive", "Usage: cv archive <output zip file> [--subfolder <path>] [--full-paths]",
+                        (target, subfolder, preserveRepoPaths) => tool.Archive(target, subfolder, preserveRepoPaths));
                     break;
                 case "checkpoint":
                     if (args.Length != 3)
@@ -109,10 +108,73 @@ namespace CheckVersion
         #endregion
 
         #region Routines
+        /// <summary>
+        /// Shared argument handling for `gather` and `archive`, which take the same optional pack scope.
+        /// </summary>
+        private static void RunPackCommand(string[] args, string commandName, string usage, Action<string, string?, bool> run)
+        {
+            if (!TryParsePackArguments(args, out string target, out string? subfolder, out bool preserveRepoPaths, out string? error))
+            {
+                Console.WriteLine(Color.Red, error!);
+                Console.WriteLine(Color.Red, usage);
+                return;
+            }
+
+            run(target, subfolder, preserveRepoPaths);
+        }
+        /// <summary>
+        /// Parse `&lt;target&gt; [--subfolder|-s &lt;path&gt;] [--full-paths]` following the command name.
+        /// </summary>
+        internal static bool TryParsePackArguments(string[] args, out string target, out string? subfolder, out bool preserveRepoPaths, out string? error)
+        {
+            target = string.Empty;
+            subfolder = null;
+            preserveRepoPaths = false;
+            error = null;
+
+            List<string> positionals = [];
+            for (int i = 1; i < args.Length; i++)
+            {
+                string argument = args[i];
+                if (argument.Equals("--subfolder", StringComparison.OrdinalIgnoreCase) || argument.Equals("-s", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (i + 1 >= args.Length)
+                    {
+                        error = $"Missing value for {argument}.";
+                        return false;
+                    }
+
+                    subfolder = args[++i];
+                }
+                else if (argument.Equals("--full-paths", StringComparison.OrdinalIgnoreCase))
+                    preserveRepoPaths = true;
+                else if (argument.StartsWith("--", StringComparison.Ordinal))
+                {
+                    error = $"Unrecognized option: {argument}.";
+                    return false;
+                }
+                else
+                    positionals.Add(argument);
+            }
+
+            if (positionals.Count == 0)
+            {
+                error = "Missing output path.";
+                return false;
+            }
+            if (positionals.Count > 1)
+            {
+                error = $"Unexpected extra argument: {positionals[1]}.";
+                return false;
+            }
+
+            target = positionals[0];
+            return true;
+        }
         private static void PrintDetailedHelp()
         {
-            const string helpText = """
-                cv — Check Version CLI (v1.1.1)
+            string helpText = $"""
+                cv — Check Version CLI (v{Version})
 
                 Usage:
                   cv <command> [options]
@@ -130,17 +192,23 @@ namespace CheckVersion
                   push <url> <key>                      Upload new/updated files to CheckVersion-server
                   pull <url> <key>                      Download latest files from CheckVersion-server
 
+                Options for `gather` and `archive`:
+                  -s, --subfolder <path>   Pack only tracked files under <path> instead of the whole repo
+                      --full-paths         Keep repo-relative paths in the output instead of making
+                                           the subfolder the output root (only affects --subfolder)
+
                 Options:
                   -h, --help, help   Show this help information
                   -v, --version      Display version
 
-                Use `.cvignore` to exclude files from tracking.
+                Use `.cvignore` to exclude files from tracking. A `.cvignore` may also be placed in any
+                subfolder, where its patterns are interpreted relative to that subfolder.
                 For push/pull, provide the server base URL (e.g. https://localhost:5001) and your API key.
                 """;
             Console.WriteLine(Color.Goldenrod, helpText);
         }
         private static void PrintVersion()
-            => Console.WriteLine("cv — Check Version CLI v1.1.1");
+            => Console.WriteLine($"cv — Check Version CLI v{Version}");
         #endregion
     }
 }

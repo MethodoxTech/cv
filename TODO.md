@@ -6,11 +6,28 @@ Project wise TODO items is edited here to avoid clustering the public facing mai
 
 Ignore File: (Expect another dedicated 3hr (without AI assistance) to get ignore working well)
 
-- [ ] Currently `obj`, `bin` etc. is not able to ignore such folders in subfolder paths.
+- [x] Currently `obj`, `bin` etc. is not able to ignore such folders in subfolder paths.
+    * Bare-name patterns match at any depth; covered by `IgnoreRuleTests`.
+- [x] Support `.cvignore` in subfolders, git style.
+    * See `IgnoreContext`/`IgnoreScope`. Deeper file wins, nested `!` can re-include, ignored folders are still never descended into.
 - [ ] `cv status` performance with large folders sucks right now.
 - [ ] Replace custom matching with FileSystemGlobbing: https://learn.microsoft.com/en-us/dotnet/api/microsoft.extensions.filesystemglobbing.matcher?view=net-9.0-pp and https://learn.microsoft.com/en-us/dotnet/core/extensions/file-globbing
+    * Note this would need to keep the layered nested-ignore semantics, which Matcher does not model directly.
 - [ ] Include explicit .cvinclude file (also maps to Microsoft Matcher well), default * for all files.
+- [ ] On Linux/macOS, dotfiles carry the Hidden attribute and are skipped by the folder walk, so `.cvignore` itself is not tracked there. Decide whether that should be special-cased — lifting the skip wholesale would start tracking `.git`.
 - [ ] For the dev log, we could add a screenshot of CV status outputs for clarity.
+
+File Operations:
+
+- [x] Pack only a subfolder instead of the whole repo (`gather`/`archive` `--subfolder`).
+- [ ] Decide whether a scoped checkpoint is worth supporting. It would need history rewriting (rebasing `.cv/versions` onto the subfolder), which is why it was left out.
+
+GUI:
+
+- [x] Avalonia front-end, `CheckVersion.GUI`, procedural (no XAML).
+- [ ] Expose push/pull in the GUI.
+- [ ] Watch the file system so the window refreshes without the Refresh button.
+- [ ] Remember recently opened repos.
 
 File synching:
 
