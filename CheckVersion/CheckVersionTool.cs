@@ -10,7 +10,6 @@ using System.Net.Http;
 using System.Net.Http.Json;
 using System.Threading.Tasks;
 using Color = System.Drawing.Color;
-using Console = CheckVersion.Types.ColorConsole;
 
 namespace CheckVersion
 {
@@ -21,16 +20,27 @@ namespace CheckVersion
         public string RepoControlFolderName { get; }
         public string ChangelogFilePath { get; }
         public string IgnoreFilename { get; }
-        public CheckVersionTool(string repoRootPath, string repoControlFolderName, string repoStorageFilePath, string ignoreFilename)
+        /// <summary>
+        /// Where progress and diagnostic text goes. Defaults to the terminal.
+        /// </summary>
+        public ICheckVersionOutput Output { get; }
+
+        public CheckVersionTool(string repoRootPath, string repoControlFolderName, string repoStorageFilePath, string ignoreFilename, ICheckVersionOutput? output = null)
         {
             RootPath = repoRootPath;
             RepoControlFolderName = repoControlFolderName;
             ChangelogFilePath = repoStorageFilePath;
             IgnoreFilename = ignoreFilename;
+            Output = output ?? ConsoleOutput.Instance;
         }
         #endregion
 
         #region Accessors
+        /// <summary>
+        /// Whether a CV repo currently exists at <see cref="RootPath"/>.
+        /// </summary>
+        public bool RepoExists
+            => Directory.Exists(RepoControlFolderPath);
         private string RepoControlFolderPath
             => Path.IsPathRooted(RepoControlFolderName)
             ? Path.GetFullPath(RepoControlFolderName)
@@ -43,8 +53,76 @@ namespace CheckVersion
             => Path.IsPathRooted(IgnoreFilename)
             ? Path.GetFullPath(IgnoreFilename)
             : Path.GetFullPath(Path.Combine(RootPath, IgnoreFilename));
+        /// <summary>
+        /// Bare file name to look for when discovering nested ignore files during the folder walk.
+        /// </summary>
+        private string IgnoreFileNameOnly
+            => Path.GetFileName(IgnoreFilename);
         private string ChangelogArchivePath
             => NormalizeArchivePath(Path.GetRelativePath(Path.GetFullPath(RootPath), ChangelogFullFilePath));
+        #endregion
+
+        #region Structured Queries
+        /// <summary>
+        /// Current uncommitted changes. Prefer this over parsing <see cref="Status"/> output.
+        /// </summary>
+        public Changelist GetChangelist()
+            => GetChanges();
+        /// <summary>
+        /// Current uncommitted changes, measured against an already-loaded history.
+        /// </summary>
+        /// <remarks>
+        /// Reading the stored history is the expensive half of every query here, so a host that shows several views of one repo state should load it once and pass it to each accessor rather than paying for a fresh deserialization per view.
+        /// </remarks>
+        public Changelist GetChangelist(RepoHistory history)
+            => GetChanges(history);
+        /// <summary>
+        /// The commit history as stored on disk.
+        /// </summary>
+        public RepoHistory GetHistory()
+        {
+            if (!RepoExists)
+                throw new InvalidOperationException("Must be inside a CV repo.");
+
+            return SerializationHelper.DeserializeFromFile(ChangelogFullFilePath);
+        }
+        /// <summary>
+        /// All currently tracked file paths, relative to the repo root, sorted.
+        /// </summary>
+        public List<string> GetTrackedFiles()
+            => GetTrackedFiles(GetHistory());
+        /// <summary>
+        /// All currently tracked file paths from an already-loaded history, relative to the repo root, sorted.
+        /// </summary>
+        public static List<string> GetTrackedFiles(RepoHistory history)
+            => [.. history.GetLatestFiles().Keys.OrderBy(p => p, StringComparer.OrdinalIgnoreCase)];
+        /// <summary>
+        /// Every folder that contains at least one tracked file, including intermediate folders, sorted.
+        /// Handy for offering a pick list of pack-able subfolders.
+        /// </summary>
+        public List<string> GetTrackedFolders()
+            => GetTrackedFolders(GetHistory());
+        /// <summary>
+        /// Every folder that contains at least one tracked file in an already-loaded history, sorted.
+        /// </summary>
+        public static List<string> GetTrackedFolders(RepoHistory history)
+        {
+            HashSet<string> folders = new(StringComparer.OrdinalIgnoreCase);
+            foreach (string path in history.GetLatestFiles().Keys)
+            {
+                string current = path;
+                while (true)
+                {
+                    int separator = current.LastIndexOf('/');
+                    if (separator <= 0)
+                        break;
+
+                    current = current[..separator];
+                    folders.Add(current);
+                }
+            }
+            return [.. folders.OrderBy(p => p, StringComparer.OrdinalIgnoreCase)];
+        }
         #endregion
 
         #region Methods
@@ -53,9 +131,9 @@ namespace CheckVersion
         /// </summary>
         public void Log()
         {
-            if (!Directory.Exists(RepoControlFolderPath))
+            if (!RepoExists)
             {
-                Console.WriteLine(Color.Red, "No repo exists at current location");
+                Output.WriteLine(Color.Red, "No repo exists at current location");
                 return;
             }
 
@@ -63,19 +141,19 @@ namespace CheckVersion
             for (int i = 0; i < storage.Commits.Count; i++)
             {
                 RepoHistory.Commit commit = storage.Commits[i];
-                Console.Write($"{i}.".PadRight(3));
-                Console.Write(Color.Green, commit.Time.ToLocalTime().ToString() + " ");
-                Console.WriteLine(Color.White, commit.Message);
+                Output.Write(Color.White, $"{i}.".PadRight(3));
+                Output.Write(Color.Green, commit.Time.ToLocalTime().ToString() + " ");
+                Output.WriteLine(Color.White, commit.Message);
             }
-            Console.WriteLine(Color.Goldenrod, $"{storage.Commits.Count} {(storage.Commits.Count <= 1 ? "commit" : "commits")}.");
+            Output.WriteLine(Color.Goldenrod, $"{storage.Commits.Count} {(storage.Commits.Count <= 1 ? "commit" : "commits")}.");
         }
         /// <summary>
         /// Commit current changes to the repo.
         /// </summary>
         public void Commit(string message)
         {
-            if (!Directory.Exists(RepoControlFolderPath))
-                Console.WriteLine(Color.Red, "No repo exists at current location");
+            if (!RepoExists)
+                Output.WriteLine(Color.Red, "No repo exists at current location");
             else
             {
                 Changelist changes = GetChanges();
@@ -87,13 +165,10 @@ namespace CheckVersion
                     .Union(changes.NewFiles) // Order matters, we must union DeletedFiles first because in the case of FileChangeType.Recreate, we want to maintain that relation
                     .ToList();
 
-                if (allChanges.Count == 0)
-                {
-                    Console.WriteLine(Color.Red, "There is no changed file, are you sure you want to make an empty commit? [Y/N]");
-                    string input = Console.ReadLine().Trim().ToLower();
-                    if (input == "n" || input == "no" || input == "f")
-                        return;
-                }
+                if (allChanges.Count == 0
+                    && !Output.Confirm("There is no changed file, are you sure you want to make an empty commit?", defaultAnswer: true))
+                    return;
+
                 storage.Commits.Add(new RepoHistory.Commit()
                 {
                     Changes = allChanges,
@@ -101,7 +176,7 @@ namespace CheckVersion
                     Time = DateTime.Now.ToUniversalTime()
                 });
                 SerializationHelper.SerializeToFile(storage, ChangelogFullFilePath);
-                Console.WriteLine(Color.Goldenrod, $"Saved {allChanges.Count} {(allChanges.Count <= 1 ? "file" : "files")}.");
+                Output.WriteLine(Color.Goldenrod, $"Saved {allChanges.Count} {(allChanges.Count <= 1 ? "file" : "files")}.");
             }
         }
         /// <summary>
@@ -109,13 +184,13 @@ namespace CheckVersion
         /// </summary>
         public void Init()
         {
-            if (Directory.Exists(RepoControlFolderPath))
-                Console.WriteLine(Color.Red, "A CV repo already exists at this location.");
+            if (RepoExists)
+                Output.WriteLine(Color.Red, "A CV repo already exists at this location.");
             else
             {
                 Directory.CreateDirectory(RepoControlFolderPath);
                 SerializationHelper.SerializeToFile(new RepoHistory(), ChangelogFullFilePath);
-                Console.WriteLine(Color.GreenYellow, $"Repo initialized at: {RootPath}");
+                Output.WriteLine(Color.GreenYellow, $"Repo initialized at: {RootPath}");
             }
         }
         /// <summary>
@@ -123,47 +198,47 @@ namespace CheckVersion
         /// </summary>
         public void Status()
         {
-            if (!Directory.Exists(RepoControlFolderPath))
+            if (!RepoExists)
             {
-                Console.WriteLine(Color.Red, "No repo exists at current location");
+                Output.WriteLine(Color.Red, "No repo exists at current location");
                 return;
             }
 
             Changelist changes = GetChanges();
-            Console.WriteLine(Color.Goldenrod, $"# New: {changes.NewFiles.Count}");
+            Output.WriteLine(Color.Goldenrod, $"# New: {changes.NewFiles.Count}");
             foreach (FileChangeRecord file in changes.NewFiles)
             {
-                Console.Write(Color.Green, $"{file.Path} ");
+                Output.Write(Color.Green, $"{file.Path} ");
                 if (file.ChangeType == FileChangeRecord.FileChangeType.Recreated)
                 {
-                    Console.Write(Color.DarkGray, file.UpdateTime.ToLocalTime());
-                    Console.WriteLine(Color.Yellow, " [Recreated]");
+                    Output.Write(Color.DarkGray, file.UpdateTime.ToLocalTime().ToString());
+                    Output.WriteLine(Color.Yellow, " [Recreated]");
                 }
                 else
-                    Console.WriteLine(Color.DarkGray, file.UpdateTime.ToLocalTime());
+                    Output.WriteLine(Color.DarkGray, file.UpdateTime.ToLocalTime().ToString());
             }
 
-            Console.WriteLine(Color.Goldenrod, $"# Updated: {changes.UpdatedFiles.Count}");
+            Output.WriteLine(Color.Goldenrod, $"# Updated: {changes.UpdatedFiles.Count}");
             foreach (FileChangeRecord file in changes.UpdatedFiles)
             {
-                Console.Write(Color.YellowGreen, $"{file.Path} ");
-                Console.WriteLine(Color.DarkGray, file.UpdateTime.ToLocalTime());
+                Output.Write(Color.YellowGreen, $"{file.Path} ");
+                Output.WriteLine(Color.DarkGray, file.UpdateTime.ToLocalTime().ToString());
             }
 
-            Console.WriteLine(Color.Goldenrod, $"# Moved: {changes.MovedFiles.Count}");
+            Output.WriteLine(Color.Goldenrod, $"# Moved: {changes.MovedFiles.Count}");
             foreach (FileChangeRecord file in changes.MovedFiles)
             {
-                Console.Write(Color.SkyBlue, $"{file.Path} ");
-                Console.Write(Color.Yellow, $"-> ");
-                Console.Write(Color.SkyBlue, $"{file.NewPath} ");
-                Console.WriteLine(Color.DarkGray, file.UpdateTime.ToLocalTime());
+                Output.Write(Color.SkyBlue, $"{file.Path} ");
+                Output.Write(Color.Yellow, $"-> ");
+                Output.Write(Color.SkyBlue, $"{file.NewPath} ");
+                Output.WriteLine(Color.DarkGray, file.UpdateTime.ToLocalTime().ToString());
             }
 
-            Console.WriteLine(Color.Goldenrod, $"# Deleted: {changes.DeletedFiles.Count}");
+            Output.WriteLine(Color.Goldenrod, $"# Deleted: {changes.DeletedFiles.Count}");
             foreach (FileChangeRecord file in changes.DeletedFiles)
             {
-                Console.Write(Color.DarkRed, $"{file.Path} ");
-                Console.WriteLine(Color.DarkGray, file.UpdateTime.ToLocalTime());
+                Output.Write(Color.DarkRed, $"{file.Path} ");
+                Output.WriteLine(Color.DarkGray, file.UpdateTime.ToLocalTime().ToString());
             }
         }
         /// <summary>
@@ -172,9 +247,9 @@ namespace CheckVersion
         /// </summary>
         public void List()
         {
-            if (!Directory.Exists(RepoControlFolderPath))
+            if (!RepoExists)
             {
-                Console.WriteLine(Color.Red, "No repo exists at current location");
+                Output.WriteLine(Color.Red, "No repo exists at current location");
                 return;
             }
 
@@ -186,64 +261,69 @@ namespace CheckVersion
                 .OrderBy(p => p)
                 .ToList();
 
-            Console.WriteLine(Color.Cyan, "# Tracked files:");
+            Output.WriteLine(Color.Cyan, "# Tracked files:");
             foreach (string path in tracked)
             {
                 string fullPath = Path.Combine(RootPath, path);
                 if (File.Exists(fullPath))
-                    Console.WriteLine(Color.White, path);
+                    Output.WriteLine(Color.White, path);
                 else
                 {
-                    Console.Write(Color.White, path);
-                    Console.WriteLine(Color.Yellow, " [Missing]");
+                    Output.Write(Color.White, path);
+                    Output.WriteLine(Color.Yellow, " [Missing]");
                 }
             }
 
             // Compute any pending changes
             Changelist changes = GetChanges();
-            bool hasChanges =
-                changes.NewFiles.Any() ||
-                changes.UpdatedFiles.Any() ||
-                changes.MovedFiles.Any() ||
-                changes.DeletedFiles.Any();
-
-            if (hasChanges)
+            if (HasUncommittedChanges(changes))
             {
-                Console.WriteLine();
-                Console.WriteLine(Color.Goldenrod, "# Uncommitted changes:");
+                Output.WriteLine();
+                Output.WriteLine(Color.Goldenrod, "# Uncommitted changes:");
 
                 foreach (FileChangeRecord f in changes.NewFiles)
-                    Console.WriteLine(Color.Green, $"New:     {f.Path}");
+                    Output.WriteLine(Color.Green, $"New:     {f.Path}");
                 foreach (FileChangeRecord f in changes.UpdatedFiles)
-                    Console.WriteLine(Color.YellowGreen, $"Updated: {f.Path}");
+                    Output.WriteLine(Color.YellowGreen, $"Updated: {f.Path}");
                 foreach (FileChangeRecord f in changes.MovedFiles)
-                    Console.WriteLine(Color.SkyBlue, $"Moved:   {f.Path} → {f.NewPath}");
+                    Output.WriteLine(Color.SkyBlue, $"Moved:   {f.Path} → {f.NewPath}");
                 foreach (FileChangeRecord f in changes.DeletedFiles)
-                    Console.WriteLine(Color.DarkRed, $"Deleted: {f.Path}");
+                    Output.WriteLine(Color.DarkRed, $"Deleted: {f.Path}");
             }
         }
         /// <summary>
-        /// Copy all currently tracked files into an empty destination folder, preserving folder structure.
+        /// Copy currently tracked files into an empty destination folder, preserving folder structure.
         /// </summary>
-        public void Gather(string outputFolder)
+        /// <param name="subfolder">
+        /// Optional repo-relative (or absolute, but inside the repo) folder. When given, only tracked files
+        /// under that folder are gathered.
+        /// </param>
+        /// <param name="preserveRepoPaths">
+        /// When a subfolder is given, keep the full repo-relative layout instead of making the subfolder
+        /// the root of the output. Ignored when gathering the whole repo.
+        /// </param>
+        public void Gather(string outputFolder, string? subfolder = null, bool preserveRepoPaths = false)
         {
-            if (!Directory.Exists(RepoControlFolderPath))
+            if (!RepoExists)
             {
-                Console.WriteLine(Color.Red, "No repo exists at current location");
+                Output.WriteLine(Color.Red, "No repo exists at current location");
                 return;
             }
 
             if (string.IsNullOrWhiteSpace(outputFolder))
             {
-                Console.WriteLine(Color.Red, "Output folder is required.");
+                Output.WriteLine(Color.Red, "Output folder is required.");
                 return;
             }
+
+            if (!TryResolveSubfolder(subfolder, out string subfolderPrefix))
+                return;
 
             string fullOutputFolder = Path.GetFullPath(outputFolder);
 
             if (File.Exists(fullOutputFolder))
             {
-                Console.WriteLine(Color.Red, "Output path points to a file, not a folder.");
+                Output.WriteLine(Color.Red, "Output path points to a file, not a folder.");
                 return;
             }
 
@@ -252,7 +332,7 @@ namespace CheckVersion
                 bool isEmpty = !Directory.EnumerateFileSystemEntries(fullOutputFolder).Any();
                 if (!isEmpty)
                 {
-                    Console.WriteLine(Color.Red, "Destination folder must be empty.");
+                    Output.WriteLine(Color.Red, "Destination folder must be empty.");
                     return;
                 }
             }
@@ -263,63 +343,58 @@ namespace CheckVersion
 
             Changelist changes = GetChanges();
             if (HasUncommittedChanges(changes))
-                Console.WriteLine(Color.Yellow, "Warning: repo has uncommitted changes. Gather will copy current tracked file contents; new untracked files are omitted.");
+                Output.WriteLine(Color.Yellow, "Warning: repo has uncommitted changes. Gather will copy current tracked file contents; new untracked files are omitted.");
 
-            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFullFilePath);
-            List<string> tracked = storage
-                .GetLatestFiles()
-                .Keys
-                .OrderBy(p => p)
-                .ToList();
-
-            List<string> missingFiles = tracked
-                .Where(p => !File.Exists(Path.Combine(RootPath, p)))
-                .ToList();
-
-            if (missingFiles.Count > 0)
-            {
-                Console.WriteLine(Color.Red, "Cannot gather because some tracked files are missing:");
-                foreach (string missing in missingFiles)
-                    Console.WriteLine(Color.Yellow, missing);
+            if (!TrySelectPackFiles(subfolderPrefix, "gather", out List<string> tracked))
                 return;
-            }
 
             foreach (string relativePath in tracked)
             {
                 string sourcePath = Path.Combine(RootPath, relativePath);
-                string destinationPath = Path.Combine(fullOutputFolder, relativePath);
+                string destinationPath = Path.Combine(fullOutputFolder, MapPackPath(relativePath, subfolderPrefix, preserveRepoPaths));
 
                 string? destinationDirectory = Path.GetDirectoryName(destinationPath);
                 if (!string.IsNullOrEmpty(destinationDirectory))
                     Directory.CreateDirectory(destinationDirectory);
 
                 File.Copy(sourcePath, destinationPath, overwrite: false);
-                Console.WriteLine(Color.Green, $"Gathered {relativePath}");
+                Output.WriteLine(Color.Green, $"Gathered {relativePath}");
             }
 
-            Console.WriteLine(Color.GreenYellow, $"Gather complete: {fullOutputFolder}");
+            Output.WriteLine(Color.GreenYellow, $"Gather complete: {fullOutputFolder} ({tracked.Count} {(tracked.Count == 1 ? "file" : "files")})");
         }
         /// <summary>
-        /// Archive all currently tracked files into a zip file.
+        /// Archive currently tracked files into a zip file.
         /// </summary>
-        public void Archive(string outputZipFile)
+        /// <param name="subfolder">
+        /// Optional repo-relative (or absolute, but inside the repo) folder. When given, only tracked files
+        /// under that folder are archived.
+        /// </param>
+        /// <param name="preserveRepoPaths">
+        /// When a subfolder is given, keep the full repo-relative layout inside the zip instead of making the
+        /// subfolder the zip root. Ignored when archiving the whole repo.
+        /// </param>
+        public void Archive(string outputZipFile, string? subfolder = null, bool preserveRepoPaths = false)
         {
-            if (!Directory.Exists(RepoControlFolderPath))
+            if (!RepoExists)
             {
-                Console.WriteLine(Color.Red, "No repo exists at current location");
+                Output.WriteLine(Color.Red, "No repo exists at current location");
                 return;
             }
 
             if (string.IsNullOrWhiteSpace(outputZipFile))
             {
-                Console.WriteLine(Color.Red, "Output zip file is required.");
+                Output.WriteLine(Color.Red, "Output zip file is required.");
                 return;
             }
+
+            if (!TryResolveSubfolder(subfolder, out string subfolderPrefix))
+                return;
 
             string fullZipPath = Path.GetFullPath(outputZipFile);
             if (Directory.Exists(fullZipPath))
             {
-                Console.WriteLine(Color.Red, "Output zip path points to a folder, not a file.");
+                Output.WriteLine(Color.Red, "Output zip path points to a folder, not a file.");
                 return;
             }
 
@@ -330,71 +405,62 @@ namespace CheckVersion
 
             if (File.Exists(fullZipPath))
             {
-                Console.WriteLine(Color.Red, "Output zip file already exists.");
+                Output.WriteLine(Color.Red, "Output zip file already exists.");
                 return;
             }
 
             Changelist changes = GetChanges();
             if (HasUncommittedChanges(changes))
-                Console.WriteLine(Color.Yellow, "Warning: repo has uncommitted changes. Archive will copy current tracked file contents; new untracked files are omitted.");
+                Output.WriteLine(Color.Yellow, "Warning: repo has uncommitted changes. Archive will copy current tracked file contents; new untracked files are omitted.");
 
-            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFullFilePath);
-            List<string> tracked = storage
-                .GetLatestFiles()
-                .Keys
-                .OrderBy(p => p)
-                .ToList();
-
-            List<string> missingFiles = tracked
-                .Where(p => !File.Exists(Path.Combine(RootPath, p)))
-                .ToList();
-
-            if (missingFiles.Count > 0)
-            {
-                Console.WriteLine(Color.Red, "Cannot archive because some tracked files are missing:");
-                foreach (string missing in missingFiles)
-                    Console.WriteLine(Color.Yellow, missing);
+            if (!TrySelectPackFiles(subfolderPrefix, "archive", out List<string> tracked))
                 return;
-            }
 
-            using ZipArchive archive = ZipFile.Open(fullZipPath, ZipArchiveMode.Create);
-            foreach (string relativePath in tracked)
+            using (ZipArchive archive = ZipFile.Open(fullZipPath, ZipArchiveMode.Create))
             {
-                string sourcePath = Path.Combine(RootPath, relativePath);
-                archive.CreateEntryFromFile(sourcePath, NormalizeArchivePath(relativePath), CompressionLevel.Optimal);
-                Console.WriteLine(Color.Green, $"Archived {relativePath}");
+                foreach (string relativePath in tracked)
+                {
+                    string sourcePath = Path.Combine(RootPath, relativePath);
+                    archive.CreateEntryFromFile(sourcePath, NormalizeArchivePath(MapPackPath(relativePath, subfolderPrefix, preserveRepoPaths)), CompressionLevel.Optimal);
+                    Output.WriteLine(Color.Green, $"Archived {relativePath}");
+                }
             }
 
-            Console.WriteLine(Color.GreenYellow, $"Archive created: {fullZipPath}");
+            Output.WriteLine(Color.GreenYellow, $"Archive created: {fullZipPath} ({tracked.Count} {(tracked.Count == 1 ? "file" : "files")})");
         }
         /// <summary>
         /// Create a restorable checkpoint archive containing the version history and all currently tracked files.
         /// </summary>
+        /// <remarks>
+        /// Deliberately whole-repo only: the checkpoint carries `.cv/versions`, whose records are repo-root
+        /// relative, so a partial checkpoint would restore into a repo that immediately reports every excluded
+        /// file as deleted. Use <see cref="Archive"/> when you only want a subfolder's contents.
+        /// </remarks>
         public void CreateCheckpoint(string targetZipFile)
         {
-            if (!Directory.Exists(RepoControlFolderPath))
+            if (!RepoExists)
             {
-                Console.WriteLine(Color.Red, "No repo exists at current location");
+                Output.WriteLine(Color.Red, "No repo exists at current location");
                 return;
             }
 
             if (string.IsNullOrWhiteSpace(targetZipFile))
             {
-                Console.WriteLine(Color.Red, "Target zip file is required.");
+                Output.WriteLine(Color.Red, "Target zip file is required.");
                 return;
             }
 
             Changelist changes = GetChanges();
             if (HasUncommittedChanges(changes))
             {
-                Console.WriteLine(Color.Red, "Cannot create checkpoint because the repo has uncommitted changes.");
+                Output.WriteLine(Color.Red, "Cannot create checkpoint because the repo has uncommitted changes.");
                 return;
             }
 
             string fullZipPath = Path.GetFullPath(targetZipFile);
             if (Directory.Exists(fullZipPath))
             {
-                Console.WriteLine(Color.Red, "Target zip path points to a folder, not a file.");
+                Output.WriteLine(Color.Red, "Target zip path points to a folder, not a file.");
                 return;
             }
 
@@ -404,7 +470,7 @@ namespace CheckVersion
 
             if (File.Exists(fullZipPath))
             {
-                Console.WriteLine(Color.Red, "Target zip file already exists.");
+                Output.WriteLine(Color.Red, "Target zip file already exists.");
                 return;
             }
 
@@ -421,63 +487,63 @@ namespace CheckVersion
 
             if (missingFiles.Count > 0)
             {
-                Console.WriteLine(Color.Red, "Cannot create checkpoint because some tracked files are missing:");
+                Output.WriteLine(Color.Red, "Cannot create checkpoint because some tracked files are missing:");
                 foreach (string missing in missingFiles)
-                    Console.WriteLine(Color.Yellow, missing);
+                    Output.WriteLine(Color.Yellow, missing);
                 return;
             }
 
             using ZipArchive archive = ZipFile.Open(fullZipPath, ZipArchiveMode.Create);
 
             archive.CreateEntryFromFile(ChangelogFullFilePath, ChangelogArchivePath, CompressionLevel.Optimal);
-            Console.WriteLine(Color.Green, $"Checkpointed {Program.RepoStorageFilePath}");
+            Output.WriteLine(Color.Green, $"Checkpointed {ChangelogArchivePath}");
 
             foreach (string relativePath in tracked)
             {
                 string sourcePath = Path.Combine(RootPath, relativePath);
                 archive.CreateEntryFromFile(sourcePath, NormalizeArchivePath(relativePath), CompressionLevel.Optimal);
-                Console.WriteLine(Color.Green, $"Checkpointed {relativePath}");
+                Output.WriteLine(Color.Green, $"Checkpointed {relativePath}");
             }
 
-            Console.WriteLine(Color.GreenYellow, $"Checkpoint created: {fullZipPath}");
+            Output.WriteLine(Color.GreenYellow, $"Checkpoint created: {fullZipPath}");
         }
         /// <summary>
         /// Restore a checkpoint archive into a clean folder.
         /// </summary>
         public void RestoreCheckpoint(string sourceZipFile)
         {
-            if (Directory.Exists(RepoControlFolderPath))
+            if (RepoExists)
             {
-                Console.WriteLine(Color.Red, "Cannot restore checkpoint because a CV repo already exists at this location.");
+                Output.WriteLine(Color.Red, "Cannot restore checkpoint because a CV repo already exists at this location.");
                 return;
             }
 
             if (string.IsNullOrWhiteSpace(sourceZipFile))
             {
-                Console.WriteLine(Color.Red, "Source zip file is required.");
+                Output.WriteLine(Color.Red, "Source zip file is required.");
                 return;
             }
 
             string fullZipPath = Path.GetFullPath(sourceZipFile);
             if (!File.Exists(fullZipPath))
             {
-                Console.WriteLine(Color.Red, "Source zip file does not exist.");
+                Output.WriteLine(Color.Red, "Source zip file does not exist.");
                 return;
             }
 
             string rootFullPath = Path.GetFullPath(RootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             if (!IsCleanRestoreFolder(rootFullPath, fullZipPath))
             {
-                Console.WriteLine(Color.Red, "Current folder must be empty before restoring a checkpoint, except for the checkpoint file itself.");
+                Output.WriteLine(Color.Red, "Current folder must be empty before restoring a checkpoint, except for the checkpoint file itself.");
                 return;
             }
 
             using ZipArchive archive = ZipFile.OpenRead(fullZipPath);
 
-            bool hasHistory = archive.Entries.Any(e => NormalizeArchivePath(e.FullName) == NormalizeArchivePath(Program.RepoStorageFilePath));
+            bool hasHistory = archive.Entries.Any(e => NormalizeArchivePath(e.FullName) == ChangelogArchivePath);
             if (!hasHistory)
             {
-                Console.WriteLine(Color.Red, $"Invalid checkpoint: missing {Program.RepoStorageFilePath}.");
+                Output.WriteLine(Color.Red, $"Invalid checkpoint: missing {ChangelogArchivePath}.");
                 return;
             }
 
@@ -494,7 +560,7 @@ namespace CheckVersion
                 }
                 catch (InvalidOperationException ex)
                 {
-                    Console.WriteLine(Color.Red, ex.Message);
+                    Output.WriteLine(Color.Red, ex.Message);
                     return;
                 }
 
@@ -502,7 +568,7 @@ namespace CheckVersion
                 {
                     if (File.Exists(destinationPath))
                     {
-                        Console.WriteLine(Color.Red, $"Cannot restore because a file already exists where a folder is needed: {entryName}");
+                        Output.WriteLine(Color.Red, $"Cannot restore because a file already exists where a folder is needed: {entryName}");
                         return;
                     }
 
@@ -512,7 +578,7 @@ namespace CheckVersion
 
                 if (File.Exists(destinationPath) || Directory.Exists(destinationPath))
                 {
-                    Console.WriteLine(Color.Red, $"Cannot restore because destination already exists: {entryName}");
+                    Output.WriteLine(Color.Red, $"Cannot restore because destination already exists: {entryName}");
                     return;
                 }
             }
@@ -536,14 +602,14 @@ namespace CheckVersion
                     Directory.CreateDirectory(destinationDirectory);
 
                 entry.ExtractToFile(destinationPath, overwrite: false);
-                Console.WriteLine(Color.Green, $"Restored {entryName}");
+                Output.WriteLine(Color.Green, $"Restored {entryName}");
             }
 
             RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFullFilePath);
             RestoreTrackedFileTimes(storage);
 
             int trackedCount = storage.GetLatestFiles().Count;
-            Console.WriteLine(Color.GreenYellow, $"Checkpoint restored: {trackedCount} {(trackedCount == 1 ? "file" : "files")} tracked.");
+            Output.WriteLine(Color.GreenYellow, $"Checkpoint restored: {trackedCount} {(trackedCount == 1 ? "file" : "files")} tracked.");
         }
         #endregion
 
@@ -563,7 +629,7 @@ namespace CheckVersion
 
             if (!toUpload.Any())
             {
-                Console.WriteLine(Color.Yellow, "Nothing to push: working tree clean.");
+                Output.WriteLine(Color.Yellow, "Nothing to push: working tree clean.");
                 return;
             }
 
@@ -578,7 +644,7 @@ namespace CheckVersion
                 HttpResponseMessage resp = await client.PutAsync(urlPath, content);
                 resp.EnsureSuccessStatusCode();
 
-                Console.WriteLine(Color.Green, $"Pushed {change.Path}");
+                Output.WriteLine(Color.Green, $"Pushed {change.Path}");
             }
         }
         /// <summary>
@@ -593,7 +659,7 @@ namespace CheckVersion
             List<string>? files = await client.GetFromJsonAsync<List<string>>("/files");
             if (files == null || files.Count == 0)
             {
-                Console.WriteLine(Color.Yellow, "No files on server.");
+                Output.WriteLine(Color.Yellow, "No files on server.");
                 return;
             }
 
@@ -604,7 +670,7 @@ namespace CheckVersion
                 HttpResponseMessage resp = await client.GetAsync(urlPath);
                 if (!resp.IsSuccessStatusCode)
                 {
-                    Console.WriteLine(Color.Red, $"Failed to download {path}: {resp.StatusCode}");
+                    Output.WriteLine(Color.Red, $"Failed to download {path}: {resp.StatusCode}");
                     continue;
                 }
 
@@ -613,18 +679,114 @@ namespace CheckVersion
                 await using FileStream fs = File.Create(local);
                 await resp.Content.CopyToAsync(fs);
 
-                Console.WriteLine(Color.Green, $"Pulled {path}");
+                Output.WriteLine(Color.Green, $"Pulled {path}");
             }
         }
         #endregion
 
+        #region Packing Helpers
+        /// <summary>
+        /// Validate an optional pack scope and turn it into a repo-relative prefix ("" for the whole repo).
+        /// </summary>
+        private bool TryResolveSubfolder(string? subfolder, out string prefix)
+        {
+            prefix = string.Empty;
+
+            if (string.IsNullOrWhiteSpace(subfolder))
+                return true;
+
+            string candidate = subfolder.Trim();
+            if (candidate == "." || candidate == "./")
+                return true;
+
+            string rootFullPath = Path.GetFullPath(RootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            string subfolderFullPath = Path.GetFullPath(Path.IsPathRooted(candidate) ? candidate : Path.Combine(rootFullPath, candidate))
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+            if (string.Equals(subfolderFullPath, rootFullPath, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            string rootWithSeparator = rootFullPath + Path.DirectorySeparatorChar;
+            if (!subfolderFullPath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase))
+            {
+                Output.WriteLine(Color.Red, $"Subfolder must be inside the repo: {subfolder}");
+                return false;
+            }
+
+            string relative = subfolderFullPath[rootWithSeparator.Length..].Replace('\\', '/').Trim('/');
+
+            string controlFolder = NormalizeArchivePath(RepoControlFolderName).TrimEnd('/');
+            if (controlFolder.Length > 0
+                && (string.Equals(relative, controlFolder, StringComparison.OrdinalIgnoreCase)
+                    || relative.StartsWith(controlFolder + "/", StringComparison.OrdinalIgnoreCase)))
+            {
+                Output.WriteLine(Color.Red, $"Subfolder must not be inside the repo control folder: {subfolder}");
+                return false;
+            }
+
+            prefix = relative;
+            return true;
+        }
+        /// <summary>
+        /// Pick the tracked files in scope and verify they all exist on disk.
+        /// </summary>
+        private bool TrySelectPackFiles(string subfolderPrefix, string operationName, out List<string> selected)
+        {
+            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFullFilePath);
+            selected = storage
+                .GetLatestFiles()
+                .Keys
+                .Where(p => IsUnderPrefix(p, subfolderPrefix))
+                .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            // An empty whole-repo pack stays a no-op success (a fresh repo has nothing to pack yet), but an
+            // empty subfolder pack almost always means a mistyped scope, so it is worth failing on.
+            if (selected.Count == 0 && subfolderPrefix.Length > 0)
+            {
+                Output.WriteLine(Color.Red, $"Nothing to {operationName}: no tracked files under '{subfolderPrefix}'.");
+                return false;
+            }
+
+            // Only the selected files matter, so an unrelated missing file elsewhere in a large repo
+            // should not block packing a subfolder.
+            List<string> missingFiles = selected
+                .Where(p => !File.Exists(Path.Combine(RootPath, p)))
+                .ToList();
+
+            if (missingFiles.Count > 0)
+            {
+                Output.WriteLine(Color.Red, $"Cannot {operationName} because some tracked files are missing:");
+                foreach (string missing in missingFiles)
+                    Output.WriteLine(Color.Yellow, missing);
+                return false;
+            }
+
+            return true;
+        }
+        private static bool IsUnderPrefix(string relativePath, string prefix)
+            => prefix.Length == 0
+            || (relativePath.Length > prefix.Length
+                && relativePath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                && relativePath[prefix.Length] == '/');
+        /// <summary>
+        /// Decide where a tracked file lands inside the output. With a subfolder scope the subfolder becomes
+        /// the output root by default, since that is what "just dump this small folder" usually means.
+        /// </summary>
+        private static string MapPackPath(string relativePath, string prefix, bool preserveRepoPaths)
+            => prefix.Length == 0 || preserveRepoPaths
+            ? relativePath
+            : relativePath[(prefix.Length + 1)..];
+        #endregion
+
         #region Helpers
         private Changelist GetChanges()
+            => GetChanges(GetHistory());
+        private Changelist GetChanges(RepoHistory storage)
         {
-            if (!Directory.Exists(RepoControlFolderPath))
+            if (!RepoExists)
                 throw new InvalidOperationException("Must be inside a CV repo.");
 
-            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFullFilePath);
             Dictionary<string, (DateTime UpdateTime, DateTime CreationTime)> latest = storage.GetLatestFiles();
             Dictionary<string, (DateTime UpdateTime, DateTime CreationTime, long Size)> actual = GetActualFiles();
             DateTime lastCommit = storage.Commits.Count > 0 ? storage.Commits.Last().Time : DateTime.MinValue;
@@ -719,10 +881,11 @@ namespace CheckVersion
         private Dictionary<string, (DateTime UpdateTime, DateTime CreationTime, long Size)> GetActualFiles()
         {
             Dictionary<string, (DateTime UpdateTime, DateTime CreationTime, long Size)> entries = [];
-            List<IgnoreRule> ignoreRules = ReadIgnoreRules();
+            IgnoreContext rootContext = IgnoreContext.FromRootRules(ReadIgnoreRules());
 
             string rootFullPath = Path.GetFullPath(RootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             string controlFolderFullPath = RepoControlFolderPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            string ignoreFileName = IgnoreFileNameOnly;
 
             EnumerationOptions options = new()
             {
@@ -731,11 +894,24 @@ namespace CheckVersion
                 ReturnSpecialDirectories = false
             };
 
-            EnumerateAndAddFileEntry(new DirectoryInfo(rootFullPath));
+            EnumerateAndAddFileEntry(new DirectoryInfo(rootFullPath), string.Empty, rootContext);
             return entries;
 
-            void EnumerateAndAddFileEntry(DirectoryInfo currentFolder)
+            void EnumerateAndAddFileEntry(DirectoryInfo currentFolder, string relativeFolderPath, IgnoreContext context)
             {
+                // A `.cvignore` inside a subfolder layers on top of the rules inherited from above, with its
+                // patterns interpreted relative to this folder. The root file is already in the context.
+                if (relativeFolderPath.Length > 0 && !string.IsNullOrEmpty(ignoreFileName))
+                {
+                    string localIgnoreFile = Path.Combine(currentFolder.FullName, ignoreFileName);
+                    if (File.Exists(localIgnoreFile))
+                    {
+                        List<IgnoreRule> localRules = ParseIgnoreRules(File.ReadAllLines(localIgnoreFile));
+                        if (localRules.Count > 0)
+                            context = context.Push(new IgnoreScope(relativeFolderPath, localRules));
+                    }
+                }
+
                 // Recurse into subfolders unless ignored
                 foreach (DirectoryInfo subFolder in currentFolder.EnumerateDirectories("*", options))
                 {
@@ -749,32 +925,36 @@ namespace CheckVersion
                     string relativeFolder = Path.GetRelativePath(rootFullPath, subFolder.FullName).Replace('\\', '/');
 
                     // If the ignore rules say to ignore this directory, don't even recurse into it
-                    if (ShouldIgnore(ignoreRules, relativeFolder))
+                    if (context.ShouldIgnore(relativeFolder))
                         continue;
 
-                    EnumerateAndAddFileEntry(subFolder);
+                    EnumerateAndAddFileEntry(subFolder, relativeFolder, context);
                 }
                 // Enumerate files in non‐ignored folders
                 foreach (FileInfo file in currentFolder.EnumerateFiles("*", options))
                 {
                     string relativePath = Path.GetRelativePath(rootFullPath, file.FullName).Replace('\\', '/');
-                    if (!ShouldIgnore(ignoreRules, relativePath))
+                    if (!context.ShouldIgnore(relativePath))
                         entries[relativePath] = (file.LastWriteTimeUtc, file.CreationTimeUtc, file.Length);
                 }
             }
         }
+        /// <summary>
+        /// Read the repo-root ignore file. Nested ignore files are discovered during the folder walk.
+        /// </summary>
         public List<IgnoreRule> ReadIgnoreRules()
-        {
-            if (!File.Exists(IgnoreFullFilePath))
-                return [];
-
-            // Skip empty lines and lines with comments
-            return File.ReadAllLines(IgnoreFullFilePath)
-                .Select(line => line.Trim())
-                .Where(line => line.Length > 0 && !line.StartsWith("#"))
-                .Select(line => new IgnoreRule(line))
-                .ToList();
-        }
+            => File.Exists(IgnoreFullFilePath)
+            ? ParseIgnoreRules(File.ReadAllLines(IgnoreFullFilePath))
+            : [];
+        /// <summary>
+        /// Parse ignore file lines, skipping blanks and comments.
+        /// </summary>
+        public static List<IgnoreRule> ParseIgnoreRules(IEnumerable<string> lines)
+            => lines
+            .Select(line => line.Trim())
+            .Where(line => line.Length > 0 && !line.StartsWith("#"))
+            .Select(line => new IgnoreRule(line))
+            .ToList();
         public static bool ShouldIgnore(IEnumerable<IgnoreRule> rules, string path, string repoRoot = "")
         {
             // Normalize to forward‐slashes
