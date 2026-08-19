@@ -40,6 +40,8 @@ namespace CheckVersion.GUI.Views
         private readonly TextBox _trackedFilterBox;
         private readonly TextBlock _trackedSummary;
         private List<string> _trackedFiles = [];
+        // Built off the UI thread together with the rest of the snapshot, so filtering never has to stat thousands of files again on every keystroke.
+        private List<TrackedItem> _trackedItems = [];
 
         private readonly ListBox _historyList;
         private readonly TextBlock _historyEmpty;
@@ -54,8 +56,18 @@ namespace CheckVersion.GUI.Views
         private readonly Ellipse _statusDot;
         private readonly ProgressBar _busyBar;
         private readonly Panel _busyOverlay;
+        private readonly StackPanel _repoButtons;
 
         private bool _isBusy;
+
+        /// <summary>
+        /// Identifies the newest requested read. A snapshot that comes back carrying an older number was superseded (the user switched repos while it was running) and is dropped instead of applied.
+        /// </summary>
+        private int _refreshGeneration;
+        /// <summary>
+        /// The read currently in flight, so tests (and <see cref="RunToolOperation"/>) can wait for the window to catch up with the disk.
+        /// </summary>
+        private Task _refreshTask = Task.CompletedTask;
         #endregion
 
         #region Constants
@@ -138,6 +150,13 @@ namespace CheckVersion.GUI.Views
             // operation from being started twice or racing a repo switch.
             _busyOverlay = new Panel { Background = Brushes.Transparent, IsVisible = false, IsHitTestVisible = true };
 
+            _repoButtons = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 4,
+                Margin = new Thickness(10, 0, 0, 0)
+            };
+
             Content = BuildLayout();
             WireEvents();
 
@@ -160,7 +179,18 @@ namespace CheckVersion.GUI.Views
         internal ListBox TrackedListForTest => _trackedList;
         internal ListBox HistoryListForTest => _historyList;
         internal AutoCompleteBox SubfolderBoxForTest => _subfolderBox;
-        internal void RefreshForTest() => Refresh();
+        /// <summary>
+        /// Re-read the repo and hand back the task, since reading now happens off the UI thread.
+        /// </summary>
+        internal Task RefreshForTest()
+        {
+            Refresh();
+            return _refreshTask;
+        }
+        /// <summary>
+        /// The read started by the constructor (or the last one requested), so a test can wait for the window to be populated instead of racing it.
+        /// </summary>
+        internal Task PendingRefreshForTest => _refreshTask;
         #endregion
 
         #region Layout
@@ -228,14 +258,15 @@ namespace CheckVersion.GUI.Views
 
             _initButton.Click += (_, _) => RunToolOperation("Initialize repo", tool => tool.Init());
 
+            // The busy lid only covers the workspace, so these live above it and are disabled explicitly
+            // instead — otherwise a repo switch could be started on top of a running operation.
+            _repoButtons.Children.Add(browse);
+            _repoButtons.Children.Add(open);
+            _repoButtons.Children.Add(refresh);
+            _repoButtons.Children.Add(_initButton);
+
             DockPanel pathRow = new();
-            pathRow.Children.Add(Ui.Docked(new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                Spacing = 4,
-                Margin = new Thickness(10, 0, 0, 0),
-                Children = { browse, open, refresh, _initButton }
-            }, Dock.Right));
+            pathRow.Children.Add(Ui.Docked(_repoButtons, Dock.Right));
             pathRow.Children.Add(_repoPathBox);
 
             StackPanel identity = new()
@@ -552,71 +583,149 @@ namespace CheckVersion.GUI.Views
         }
 
         /// <summary>
-        /// Re-read everything the window shows from disk. Cheap enough to call after every operation.
+        /// Re-read everything the window shows from disk.
         /// </summary>
+        /// <remarks>
+        /// Nothing here is cheap on a real repo: the changelist walks every folder and the stored history has to be deserialized, which together take seconds on a repo with tens of thousands of files. 
+        /// Doing that on the UI thread is what made opening a repo look like a hang — the window simply stopped painting until the walk finished (and, at startup, never appeared at all). The read runs on the thread pool instead, and only the finished snapshot is applied here.
+        /// </remarks>
         private void Refresh()
+            => _refreshTask = RefreshAsync();
+
+        private async Task RefreshAsync()
         {
             string path = RepoPath;
+            int generation = ++_refreshGeneration;
 
-            if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+            SetReading(true);
+            RepoSnapshot snapshot;
+            try
             {
-                ShowNoRepo($"Folder does not exist: {path}", canInit: false);
-                return;
+                snapshot = await Task.Run(() => ReadSnapshot(path));
             }
+            catch (Exception ex)
+            {
+                // ReadSnapshot already reports repo-level failures; this only catches a broken read itself.
+                snapshot = RepoSnapshot.Failed(ex.Message);
+            }
+
+            // A slower read of a repo the user has already navigated away from must not overwrite the newer one that replaced it.
+            if (generation != _refreshGeneration)
+                return;
+
+            SetReading(false);
+            Apply(snapshot);
+        }
+
+        /// <summary>
+        /// Read the whole repo state off the UI thread. Touches no control, so everything it produces is plain data the UI thread can apply directly.
+        /// </summary>
+        private RepoSnapshot ReadSnapshot(string path)
+        {
+            // Even these two probes can block (a disconnected network share), so they belong here too.
+            if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+                return RepoSnapshot.NoRepo($"Folder does not exist: {path}", canInit: false);
 
             CheckVersionTool tool = CreateTool(path);
             if (!tool.RepoExists)
+                return RepoSnapshot.NoRepo("No CV repo here yet — use Init Repo to create one.", canInit: true);
+
+            try
             {
-                ShowNoRepo("No CV repo here yet — use Init Repo to create one.", canInit: true);
+                // One deserialization of the stored history feeds the changelist, the tracked list, the folder suggestions and the commit list, instead of the four this used to cost.
+                RepoHistory history = tool.GetHistory();
+                Changelist changes = tool.GetChangelist(history);
+                List<string> trackedFiles = CheckVersionTool.GetTrackedFiles(history);
+
+                return new RepoSnapshot
+                {
+                    State = RepoState.Ready,
+                    Changes = changes,
+                    TrackedFiles = trackedFiles,
+                    // Whether a tracked file is still on disk is one stat call each: done here, the filter box stays instant no matter how large the repo is.
+                    TrackedItems = [.. trackedFiles.Select(p => new TrackedItem
+                    {
+                        Path = p,
+                        IsMissing = !File.Exists(Path.Combine(path, p))
+                    })],
+                    Folders = CheckVersionTool.GetTrackedFolders(history),
+                    Commits = [.. history.Commits
+                        .Select((commit, index) => new CommitItem
+                        {
+                            Index = index,
+                            Message = string.IsNullOrWhiteSpace(commit.Message) ? "(no message)" : commit.Message,
+                            Time = commit.Time.ToLocalTime().ToString("yyyy-MM-dd HH:mm"),
+                            ChangeCount = commit.Changes.Count
+                        })
+                        .Reverse()]
+                };
+            }
+            catch (Exception ex)
+            {
+                return RepoSnapshot.Failed(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Put a finished snapshot on screen. UI thread only.
+        /// </summary>
+        private void Apply(RepoSnapshot snapshot)
+        {
+            if (snapshot.State == RepoState.NoRepo)
+            {
+                ShowNoRepo(snapshot.Message, snapshot.CanInit);
                 return;
             }
+
+            if (snapshot.State == RepoState.Failed)
+            {
+                ShowNoRepo($"Failed to read repo: {snapshot.Message}", canInit: false);
+                _output.WriteLine(DrawingColor.Red, $"Failed to read repo: {snapshot.Message}");
+                return;
+            }
+
+            Changelist changes = snapshot.Changes!;
 
             _initButton.IsEnabled = false;
             _commitButton.IsEnabled = true;
 
-            try
-            {
-                Changelist changes = tool.GetChangelist();
-                _trackedFiles = tool.GetTrackedFiles();
-                RepoHistory history = tool.GetHistory();
+            _new.Fill([.. changes.NewFiles.Select(f => Describe(f, AppTheme.NewBrush))]);
+            _updated.Fill([.. changes.UpdatedFiles.Select(f => Describe(f, AppTheme.UpdatedBrush))]);
+            _moved.Fill([.. changes.MovedFiles.Select(f => Describe(f, AppTheme.MovedBrush))]);
+            _deleted.Fill([.. changes.DeletedFiles.Select(f => Describe(f, AppTheme.DeletedBrush))]);
 
-                _new.Fill([.. changes.NewFiles.Select(f => Describe(f, AppTheme.NewBrush))]);
-                _updated.Fill([.. changes.UpdatedFiles.Select(f => Describe(f, AppTheme.UpdatedBrush))]);
-                _moved.Fill([.. changes.MovedFiles.Select(f => Describe(f, AppTheme.MovedBrush))]);
-                _deleted.Fill([.. changes.DeletedFiles.Select(f => Describe(f, AppTheme.DeletedBrush))]);
+            _trackedFiles = snapshot.TrackedFiles;
+            _trackedItems = snapshot.TrackedItems;
+            ApplyTrackedFilter();
 
-                ApplyTrackedFilter();
+            _historyList.ItemsSource = snapshot.Commits;
+            _historyEmpty.IsVisible = snapshot.Commits.Count == 0;
 
-                List<CommitItem> commits = [.. history.Commits
-                    .Select((commit, index) => new CommitItem
-                    {
-                        Index = index,
-                        Message = string.IsNullOrWhiteSpace(commit.Message) ? "(no message)" : commit.Message,
-                        Time = commit.Time.ToLocalTime().ToString("yyyy-MM-dd HH:mm"),
-                        ChangeCount = commit.Changes.Count
-                    })
-                    .Reverse()];
-                _historyList.ItemsSource = commits;
-                _historyEmpty.IsVisible = commits.Count == 0;
+            _subfolderBox.ItemsSource = snapshot.Folders;
 
-                _subfolderBox.ItemsSource = tool.GetTrackedFolders();
+            int changeCount = changes.NewFiles.Count + changes.UpdatedFiles.Count + changes.MovedFiles.Count + changes.DeletedFiles.Count;
 
-                int changeCount = changes.NewFiles.Count + changes.UpdatedFiles.Count + changes.MovedFiles.Count + changes.DeletedFiles.Count;
+            // The chips carry the healthy-state numbers, so this line is reserved for problems.
+            SetRepoState(string.Empty);
+            ShowChips(_trackedFiles.Count, snapshot.Commits.Count, changeCount);
+            SetStatus(
+                changeCount == 0 ? "Repo is clean." : $"{changeCount} uncommitted {(changeCount == 1 ? "change" : "changes")}.",
+                changeCount == 0 ? StatusKind.Good : StatusKind.Pending);
 
-                // The chips carry the healthy-state numbers, so this line is reserved for problems.
-                SetRepoState(string.Empty);
-                ShowChips(_trackedFiles.Count, history.Commits.Count, changeCount);
-                SetStatus(
-                    changeCount == 0 ? "Repo is clean." : $"{changeCount} uncommitted {(changeCount == 1 ? "change" : "changes")}.",
-                    changeCount == 0 ? StatusKind.Good : StatusKind.Pending);
+            UpdatePackPreview();
+        }
 
-                UpdatePackPreview();
-            }
-            catch (Exception ex)
-            {
-                SetStatus($"Failed to read repo: {ex.Message}", StatusKind.Error);
-                _output.WriteLine(DrawingColor.Red, $"Failed to read repo: {ex.Message}");
-            }
+        /// <summary>
+        /// Show that a read is under way. The window stays interactive, but the repo buttons are held so a second read cannot be stacked on the first.
+        /// </summary>
+        private void SetReading(bool reading)
+        {
+            _busyBar.IsIndeterminate = reading || _isBusy;
+            _busyBar.IsVisible = reading || _isBusy;
+            _repoButtons.IsEnabled = !reading && !_isBusy;
+
+            if (reading)
+                SetStatus("Reading repo…", StatusKind.Pending);
         }
 
         private void ShowNoRepo(string message, bool canInit)
@@ -624,6 +733,7 @@ namespace CheckVersion.GUI.Views
             _initButton.IsEnabled = canInit;
             _commitButton.IsEnabled = false;
             _trackedFiles = [];
+            _trackedItems = [];
 
             _new.Fill([]);
             _updated.Fill([]);
@@ -678,9 +788,12 @@ namespace CheckVersion.GUI.Views
             }
 
             bool isEmptyCommit;
+            CheckVersionTool tool = CreateTool(RepoPath);
+            SetReading(true);
             try
             {
-                Changelist changes = CreateTool(RepoPath).GetChangelist();
+                // Same folder walk the refresh does, so it must not run on the UI thread either.
+                Changelist changes = await Task.Run(tool.GetChangelist);
                 isEmptyCommit = changes.NewFiles.Count + changes.UpdatedFiles.Count + changes.MovedFiles.Count + changes.DeletedFiles.Count == 0;
             }
             catch (Exception ex)
@@ -688,12 +801,20 @@ namespace CheckVersion.GUI.Views
                 SetStatus($"Failed to read repo: {ex.Message}", StatusKind.Error);
                 return;
             }
+            finally
+            {
+                SetReading(false);
+            }
 
             // Resolve the tool's one interactive question up front, so nothing has to prompt from a
             // background thread mid-operation.
             if (isEmptyCommit
                 && !await Dialogs.ConfirmAsync(this, "Empty commit", "There is no changed file. Create an empty commit anyway?"))
+            {
+                // Nothing else will set the line now the read is over, and leaving it on "Reading repo…" would claim work that is no longer running.
+                SetStatus("Commit cancelled.", StatusKind.Pending);
                 return;
+            }
 
             _output.AutoConfirm = true;
             RunToolOperation("Commit", tool => tool.Commit(message), onCompleted: () => _commitMessageBox.Text = string.Empty);
@@ -818,6 +939,7 @@ namespace CheckVersion.GUI.Views
             SetBusy(false, failure == null ? $"{title} finished." : $"{title} failed: {failure}", failure == null ? StatusKind.Good : StatusKind.Error);
             onCompleted?.Invoke();
             Refresh();
+            await _refreshTask;
         }
         #endregion
 
@@ -901,20 +1023,17 @@ namespace CheckVersion.GUI.Views
         private void ApplyTrackedFilter()
         {
             string filter = (_trackedFilterBox.Text ?? string.Empty).Trim();
-            List<string> shown = filter.Length == 0
-                ? _trackedFiles
-                : [.. _trackedFiles.Where(p => p.Contains(filter, StringComparison.OrdinalIgnoreCase))];
+            List<TrackedItem> shown = filter.Length == 0
+                ? _trackedItems
+                : [.. _trackedItems.Where(item => item.Path.Contains(filter, StringComparison.OrdinalIgnoreCase))];
 
-            string root = RepoPath;
-            _trackedList.ItemsSource = shown
-                .Select(p => new TrackedItem { Path = p, IsMissing = !File.Exists(Path.Combine(root, p)) })
-                .ToList();
+            _trackedList.ItemsSource = shown;
 
             _trackedEmpty.IsVisible = shown.Count == 0;
-            _trackedEmpty.Text = _trackedFiles.Count == 0 ? "No tracked files" : "No file matches the filter";
+            _trackedEmpty.Text = _trackedItems.Count == 0 ? "No tracked files" : "No file matches the filter";
             _trackedSummary.Text = filter.Length == 0
-                ? $"{_trackedFiles.Count} files"
-                : $"{shown.Count} of {_trackedFiles.Count} files";
+                ? $"{_trackedItems.Count} files"
+                : $"{shown.Count} of {_trackedItems.Count} files";
         }
 
         private void SetBusy(bool busy, string message, StatusKind kind = StatusKind.Pending)
@@ -923,6 +1042,7 @@ namespace CheckVersion.GUI.Views
             _busyBar.IsIndeterminate = busy;
             _busyBar.IsVisible = busy;
             _busyOverlay.IsVisible = busy;
+            _repoButtons.IsEnabled = !busy;
             Cursor = busy ? WaitCursor : Cursor.Default;
             SetStatus(message, kind);
         }
@@ -975,6 +1095,36 @@ namespace CheckVersion.GUI.Views
         #endregion
 
         #region Subtypes
+        private enum RepoState
+        {
+            /// <summary>Nothing to show: the folder is missing, or holds no repo yet.</summary>
+            NoRepo,
+            /// <summary>The repo was read successfully.</summary>
+            Ready,
+            /// <summary>The repo is there but could not be read.</summary>
+            Failed
+        }
+
+        /// <summary>
+        /// Everything the window shows, gathered off the UI thread. Deliberately holds plain data only — no control may be touched from the thread that builds it.
+        /// </summary>
+        private sealed class RepoSnapshot
+        {
+            public required RepoState State { get; init; }
+            public string Message { get; init; } = string.Empty;
+            public bool CanInit { get; init; }
+            public Changelist? Changes { get; init; }
+            public List<string> TrackedFiles { get; init; } = [];
+            public List<TrackedItem> TrackedItems { get; init; } = [];
+            public List<CommitItem> Commits { get; init; } = [];
+            public List<string> Folders { get; init; } = [];
+
+            public static RepoSnapshot NoRepo(string message, bool canInit)
+                => new() { State = RepoState.NoRepo, Message = message, CanInit = canInit };
+            public static RepoSnapshot Failed(string message)
+                => new() { State = RepoState.Failed, Message = message };
+        }
+
         /// <summary>
         /// One of the four change categories: a titled card holding a list plus its empty-state placeholder.
         /// </summary>

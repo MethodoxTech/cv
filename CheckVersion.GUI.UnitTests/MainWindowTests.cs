@@ -7,6 +7,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace CheckVersion.GUI.UnitTests
 {
@@ -17,28 +18,30 @@ namespace CheckVersion.GUI.UnitTests
     public class MainWindowTests
     {
         [AvaloniaFact]
-        public void MainWindow_NoRepoFolder_ShowsWithoutThrowing()
+        public async Task MainWindow_NoRepoFolder_ShowsWithoutThrowing()
         {
             using TempRepo repo = new();
 
             MainWindow window = new(repo.RootPath);
             window.Show();
+            await window.PendingRefreshForTest;
 
             Assert.Contains("No CV repo here yet", window.RepoStateForTest.Text);
             Assert.Empty(Items(window.TrackedListForTest));
         }
 
         [AvaloniaFact]
-        public void MainWindow_MissingFolder_ReportsInsteadOfCrashing()
+        public async Task MainWindow_MissingFolder_ReportsInsteadOfCrashing()
         {
             MainWindow window = new(Path.Combine(Path.GetTempPath(), "cv-gui-tests", Guid.NewGuid().ToString("N")));
             window.Show();
+            await window.PendingRefreshForTest;
 
             Assert.Contains("does not exist", window.RepoStateForTest.Text);
         }
 
         [AvaloniaFact]
-        public void MainWindow_CommittedRepo_PopulatesTrackedFilesAndHistory()
+        public async Task MainWindow_CommittedRepo_PopulatesTrackedFilesAndHistory()
         {
             using TempRepo repo = new();
 
@@ -49,6 +52,7 @@ namespace CheckVersion.GUI.UnitTests
 
             MainWindow window = new(repo.RootPath);
             window.Show();
+            await window.PendingRefreshForTest;
 
             List<string> tracked = [.. Items(window.TrackedListForTest)];
             Assert.Contains("src/a.txt", tracked);
@@ -67,7 +71,7 @@ namespace CheckVersion.GUI.UnitTests
         }
 
         [AvaloniaFact]
-        public void MainWindow_DirtyRepo_ShowsPendingChanges()
+        public async Task MainWindow_DirtyRepo_ShowsPendingChanges()
         {
             using TempRepo repo = new();
 
@@ -80,6 +84,7 @@ namespace CheckVersion.GUI.UnitTests
 
             MainWindow window = new(repo.RootPath);
             window.Show();
+            await window.PendingRefreshForTest;
 
             Assert.Contains(Items(window.NewListForTest), item => item.Contains("added.txt"));
             Assert.Contains(Items(window.DeletedListForTest), item => item.Contains("kept.txt"));
@@ -87,7 +92,7 @@ namespace CheckVersion.GUI.UnitTests
         }
 
         [AvaloniaFact]
-        public void MainWindow_SubfolderScope_PreviewsWhatWouldBePacked()
+        public async Task MainWindow_SubfolderScope_PreviewsWhatWouldBePacked()
         {
             using TempRepo repo = new();
 
@@ -99,6 +104,7 @@ namespace CheckVersion.GUI.UnitTests
 
             MainWindow window = new(repo.RootPath);
             window.Show();
+            await window.PendingRefreshForTest;
 
             Assert.Contains("whole repo", window.PackPreviewForTest.Text);
 
@@ -113,7 +119,7 @@ namespace CheckVersion.GUI.UnitTests
         }
 
         [AvaloniaFact]
-        public void MainWindow_RefreshAfterExternalChange_PicksUpNewFiles()
+        public async Task MainWindow_RefreshAfterExternalChange_PicksUpNewFiles()
         {
             using TempRepo repo = new();
 
@@ -123,14 +129,77 @@ namespace CheckVersion.GUI.UnitTests
 
             MainWindow window = new(repo.RootPath);
             window.Show();
+            await window.PendingRefreshForTest;
             Assert.Single(Items(window.TrackedListForTest));
 
             repo.WriteFile("b.txt", "B");
             repo.Tool.Commit("second");
-            window.RefreshForTest();
+            await window.RefreshForTest();
 
             Assert.Equal(2, Items(window.TrackedListForTest).Count);
             Assert.Equal(2, Items(window.HistoryListForTest).Count);
+        }
+
+        /// <summary>
+        /// The regression test for the freeze: reading a repo must not happen on the UI thread. Right after the window is constructed and shown, the read is still only pending — a synchronous read would have finished it (and, in the real app, kept the window from appearing at all until it did).
+        /// </summary>
+        [AvaloniaFact]
+        public async Task MainWindow_OpeningRepo_ReadsOffTheUiThread()
+        {
+            using TempRepo repo = new();
+
+            repo.WriteFile("a.txt", "A");
+            repo.Tool.Init();
+            repo.Tool.Commit("initial");
+
+            MainWindow window = new(repo.RootPath);
+            window.Show();
+
+            Assert.Contains("Reading repo", window.StatusTextForTest.Text);
+            Assert.Empty(Items(window.TrackedListForTest));
+
+            await window.PendingRefreshForTest;
+
+            Assert.Single(Items(window.TrackedListForTest));
+            Assert.Contains("clean", window.StatusTextForTest.Text);
+        }
+
+        /// <summary>
+        /// Switching to another repo while a slow read is still running must end on the repo the user actually asked for, not on whichever read happens to finish last.
+        /// </summary>
+        [AvaloniaFact]
+        public async Task MainWindow_RepoSwitchedMidRead_KeepsTheNewestRepo()
+        {
+            using TempRepo slow = new();
+            using TempRepo wanted = new();
+
+            // Deliberately the slower repo to read, so its snapshot lands after the one that superseded it.
+            for (int i = 0; i < 2000; i++)
+                slow.WriteFile($"bulk/file{i}.txt", "1");
+            slow.Tool.Init();
+            slow.Tool.Commit("bulk");
+
+            wanted.WriteFile("wanted-a.txt", "2");
+            wanted.WriteFile("wanted-b.txt", "2");
+            wanted.Tool.Init();
+            wanted.Tool.Commit("wanted");
+
+            MainWindow window = new(wanted.RootPath);
+            window.Show();
+            await window.PendingRefreshForTest;
+
+            // Two reads started back to back, with nothing in between that could let the first one land.
+            window.RepoPathBoxForTest.Text = slow.RootPath;
+            Task slowRead = window.RefreshForTest();
+            window.RepoPathBoxForTest.Text = wanted.RootPath;
+            Task wantedRead = window.RefreshForTest();
+
+            // Both have to finish before the state can be judged: the point is that the superseded read lands last and still does not win.
+            await Task.WhenAll(slowRead, wantedRead);
+
+            List<string> tracked = [.. Items(window.TrackedListForTest)];
+            Assert.Equal(2, tracked.Count);
+            Assert.Contains("wanted-a.txt", tracked);
         }
 
         private static List<string> Items(ListBox list)

@@ -390,6 +390,15 @@ GetTrackedFiles()
 GetTrackedFolders()
 ```
 
+Reading the stored history is the expensive half of each of those, so a host showing several views of one repo state should load it once and pass it along instead of paying for a deserialization per view:
+
+```text
+RepoHistory history = tool.GetHistory();
+tool.GetChangelist(history)
+CheckVersionTool.GetTrackedFiles(history)
+CheckVersionTool.GetTrackedFolders(history)
+```
+
 See `CheckVersion.GUI/README.md` for a front-end built on exactly this surface.
 
 ## References
