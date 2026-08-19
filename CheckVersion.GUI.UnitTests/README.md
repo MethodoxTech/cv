@@ -6,6 +6,8 @@ Because the GUI is built procedurally with no XAML, nothing about the visual tre
 
 They also cover the view logic that has no counterpart in the CLI: the tracked-file list, the history list, the subfolder pick list, and the pack preview.
 
+Two of them are about threading rather than layout, because the window reads repos off the UI thread: one asserts that a freshly shown window is still only *reading* (a read moved back onto the UI thread would already be finished, which is what made opening a repo look like a hang), and one starts two reads back to back and asserts the superseded one does not land on top of the newer one. Both need the read to be awaited, so tests take the task from `RefreshForTest()` or `PendingRefreshForTest`.
+
 ## Dependency
 
 Uses `Avalonia.Headless.XUnit`, which is built on xunit v3 — hence this project references `xunit.v3` and is an `Exe`, unlike `CheckVersion.UnitTests` which stays on xunit 2.

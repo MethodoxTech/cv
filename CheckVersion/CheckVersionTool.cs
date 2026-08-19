@@ -1,4 +1,4 @@
-using CheckVersion.Serialization;
+﻿using CheckVersion.Serialization;
 using CheckVersion.Types;
 using System;
 using System.Collections.Generic;
@@ -69,6 +69,16 @@ namespace CheckVersion
         public Changelist GetChangelist()
             => GetChanges();
         /// <summary>
+        /// Current uncommitted changes, measured against an already-loaded history.
+        /// </summary>
+        /// <remarks>
+        /// Reading the stored history is the expensive half of every query here, so a host that shows
+        /// several views of one repo state should load it once and pass it to each accessor rather than
+        /// paying for a fresh deserialization per view.
+        /// </remarks>
+        public Changelist GetChangelist(RepoHistory history)
+            => GetChanges(history);
+        /// <summary>
         /// The commit history as stored on disk.
         /// </summary>
         public RepoHistory GetHistory()
@@ -82,15 +92,25 @@ namespace CheckVersion
         /// All currently tracked file paths, relative to the repo root, sorted.
         /// </summary>
         public List<string> GetTrackedFiles()
-            => [.. GetHistory().GetLatestFiles().Keys.OrderBy(p => p, StringComparer.OrdinalIgnoreCase)];
+            => GetTrackedFiles(GetHistory());
+        /// <summary>
+        /// All currently tracked file paths from an already-loaded history, relative to the repo root, sorted.
+        /// </summary>
+        public static List<string> GetTrackedFiles(RepoHistory history)
+            => [.. history.GetLatestFiles().Keys.OrderBy(p => p, StringComparer.OrdinalIgnoreCase)];
         /// <summary>
         /// Every folder that contains at least one tracked file, including intermediate folders, sorted.
         /// Handy for offering a pick list of pack-able subfolders.
         /// </summary>
         public List<string> GetTrackedFolders()
+            => GetTrackedFolders(GetHistory());
+        /// <summary>
+        /// Every folder that contains at least one tracked file in an already-loaded history, sorted.
+        /// </summary>
+        public static List<string> GetTrackedFolders(RepoHistory history)
         {
             HashSet<string> folders = new(StringComparer.OrdinalIgnoreCase);
-            foreach (string path in GetHistory().GetLatestFiles().Keys)
+            foreach (string path in history.GetLatestFiles().Keys)
             {
                 string current = path;
                 while (true)
@@ -763,11 +783,12 @@ namespace CheckVersion
 
         #region Helpers
         private Changelist GetChanges()
+            => GetChanges(GetHistory());
+        private Changelist GetChanges(RepoHistory storage)
         {
             if (!RepoExists)
                 throw new InvalidOperationException("Must be inside a CV repo.");
 
-            RepoHistory storage = SerializationHelper.DeserializeFromFile(ChangelogFullFilePath);
             Dictionary<string, (DateTime UpdateTime, DateTime CreationTime)> latest = storage.GetLatestFiles();
             Dictionary<string, (DateTime UpdateTime, DateTime CreationTime, long Size)> actual = GetActualFiles();
             DateTime lastCommit = storage.Commits.Count > 0 ? storage.Commits.Last().Time : DateTime.MinValue;

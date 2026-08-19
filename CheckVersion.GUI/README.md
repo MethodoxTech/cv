@@ -68,6 +68,8 @@ Output log   The same colored transcript the CLI prints
 
 Long operations run on a background thread with the window locked, so a gather over a large repo does not freeze the UI.
 
+Reading a repo is a long operation too — the changelist walks every folder and the stored history has to be deserialized, which takes seconds once a repo holds tens of thousands of files — so opening, browsing to and refreshing a repo all read on a background thread as well. The window appears immediately, shows `Reading repo…` while the read runs, and stays interactive throughout; only the finished result is applied. Switching repos mid-read is safe: a read that has been superseded is discarded rather than applied over the newer one.
+
 ## Packing a subfolder
 
 The Pack tab is the GUI equivalent of `cv archive --subfolder`.
@@ -89,3 +91,5 @@ The tool's own output interface is implemented by `UiOutput`, which marshals to 
 Push/pull are not exposed yet; use the CLI for those.
 
 The window shows one repo at a time and re-reads from disk on every refresh. There is no file-system watcher, so use Refresh after changing files outside the app.
+
+A read is not cancellable: the repo buttons are disabled until it finishes, rather than the walk being interrupted part way.
