@@ -141,9 +141,7 @@ namespace CheckVersion.GUI.UnitTests
         }
 
         /// <summary>
-        /// The regression test for the freeze: reading a repo must not happen on the UI thread. Right after
-        /// the window is constructed and shown, the read is still only pending — a synchronous read would
-        /// have finished it (and, in the real app, kept the window from appearing at all until it did).
+        /// The regression test for the freeze: reading a repo must not happen on the UI thread. Right after the window is constructed and shown, the read is still only pending — a synchronous read would have finished it (and, in the real app, kept the window from appearing at all until it did).
         /// </summary>
         [AvaloniaFact]
         public async Task MainWindow_OpeningRepo_ReadsOffTheUiThread()
@@ -167,8 +165,7 @@ namespace CheckVersion.GUI.UnitTests
         }
 
         /// <summary>
-        /// Switching to another repo while a slow read is still running must end on the repo the user
-        /// actually asked for, not on whichever read happens to finish last.
+        /// Switching to another repo while a slow read is still running must end on the repo the user actually asked for, not on whichever read happens to finish last.
         /// </summary>
         [AvaloniaFact]
         public async Task MainWindow_RepoSwitchedMidRead_KeepsTheNewestRepo()
@@ -197,8 +194,7 @@ namespace CheckVersion.GUI.UnitTests
             window.RepoPathBoxForTest.Text = wanted.RootPath;
             Task wantedRead = window.RefreshForTest();
 
-            // Both have to finish before the state can be judged: the point is that the superseded read
-            // lands last and still does not win.
+            // Both have to finish before the state can be judged: the point is that the superseded read lands last and still does not win.
             await Task.WhenAll(slowRead, wantedRead);
 
             List<string> tracked = [.. Items(window.TrackedListForTest)];

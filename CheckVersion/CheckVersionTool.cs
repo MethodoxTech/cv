@@ -72,9 +72,7 @@ namespace CheckVersion
         /// Current uncommitted changes, measured against an already-loaded history.
         /// </summary>
         /// <remarks>
-        /// Reading the stored history is the expensive half of every query here, so a host that shows
-        /// several views of one repo state should load it once and pass it to each accessor rather than
-        /// paying for a fresh deserialization per view.
+        /// Reading the stored history is the expensive half of every query here, so a host that shows several views of one repo state should load it once and pass it to each accessor rather than paying for a fresh deserialization per view.
         /// </remarks>
         public Changelist GetChangelist(RepoHistory history)
             => GetChanges(history);

@@ -40,8 +40,7 @@ namespace CheckVersion.GUI.Views
         private readonly TextBox _trackedFilterBox;
         private readonly TextBlock _trackedSummary;
         private List<string> _trackedFiles = [];
-        // Built off the UI thread together with the rest of the snapshot, so filtering never has to stat
-        // thousands of files again on every keystroke.
+        // Built off the UI thread together with the rest of the snapshot, so filtering never has to stat thousands of files again on every keystroke.
         private List<TrackedItem> _trackedItems = [];
 
         private readonly ListBox _historyList;
@@ -62,13 +61,11 @@ namespace CheckVersion.GUI.Views
         private bool _isBusy;
 
         /// <summary>
-        /// Identifies the newest requested read. A snapshot that comes back carrying an older number was
-        /// superseded (the user switched repos while it was running) and is dropped instead of applied.
+        /// Identifies the newest requested read. A snapshot that comes back carrying an older number was superseded (the user switched repos while it was running) and is dropped instead of applied.
         /// </summary>
         private int _refreshGeneration;
         /// <summary>
-        /// The read currently in flight, so tests (and <see cref="RunToolOperation"/>) can wait for the
-        /// window to catch up with the disk.
+        /// The read currently in flight, so tests (and <see cref="RunToolOperation"/>) can wait for the window to catch up with the disk.
         /// </summary>
         private Task _refreshTask = Task.CompletedTask;
         #endregion
@@ -191,8 +188,7 @@ namespace CheckVersion.GUI.Views
             return _refreshTask;
         }
         /// <summary>
-        /// The read started by the constructor (or the last one requested), so a test can wait for the
-        /// window to be populated instead of racing it.
+        /// The read started by the constructor (or the last one requested), so a test can wait for the window to be populated instead of racing it.
         /// </summary>
         internal Task PendingRefreshForTest => _refreshTask;
         #endregion
@@ -590,11 +586,8 @@ namespace CheckVersion.GUI.Views
         /// Re-read everything the window shows from disk.
         /// </summary>
         /// <remarks>
-        /// Nothing here is cheap on a real repo: the changelist walks every folder and the stored history
-        /// has to be deserialized, which together take seconds on a repo with tens of thousands of files.
-        /// Doing that on the UI thread is what made opening a repo look like a hang — the window simply
-        /// stopped painting until the walk finished (and, at startup, never appeared at all). The read runs
-        /// on the thread pool instead, and only the finished snapshot is applied here.
+        /// Nothing here is cheap on a real repo: the changelist walks every folder and the stored history has to be deserialized, which together take seconds on a repo with tens of thousands of files. 
+        /// Doing that on the UI thread is what made opening a repo look like a hang — the window simply stopped painting until the walk finished (and, at startup, never appeared at all). The read runs on the thread pool instead, and only the finished snapshot is applied here.
         /// </remarks>
         private void Refresh()
             => _refreshTask = RefreshAsync();
@@ -616,8 +609,7 @@ namespace CheckVersion.GUI.Views
                 snapshot = RepoSnapshot.Failed(ex.Message);
             }
 
-            // A slower read of a repo the user has already navigated away from must not overwrite the
-            // newer one that replaced it.
+            // A slower read of a repo the user has already navigated away from must not overwrite the newer one that replaced it.
             if (generation != _refreshGeneration)
                 return;
 
@@ -626,8 +618,7 @@ namespace CheckVersion.GUI.Views
         }
 
         /// <summary>
-        /// Read the whole repo state off the UI thread. Touches no control, so everything it produces is
-        /// plain data the UI thread can apply directly.
+        /// Read the whole repo state off the UI thread. Touches no control, so everything it produces is plain data the UI thread can apply directly.
         /// </summary>
         private RepoSnapshot ReadSnapshot(string path)
         {
@@ -641,8 +632,7 @@ namespace CheckVersion.GUI.Views
 
             try
             {
-                // One deserialization of the stored history feeds the changelist, the tracked list, the
-                // folder suggestions and the commit list, instead of the four this used to cost.
+                // One deserialization of the stored history feeds the changelist, the tracked list, the folder suggestions and the commit list, instead of the four this used to cost.
                 RepoHistory history = tool.GetHistory();
                 Changelist changes = tool.GetChangelist(history);
                 List<string> trackedFiles = CheckVersionTool.GetTrackedFiles(history);
@@ -652,8 +642,7 @@ namespace CheckVersion.GUI.Views
                     State = RepoState.Ready,
                     Changes = changes,
                     TrackedFiles = trackedFiles,
-                    // Whether a tracked file is still on disk is one stat call each: done here, the filter
-                    // box stays instant no matter how large the repo is.
+                    // Whether a tracked file is still on disk is one stat call each: done here, the filter box stays instant no matter how large the repo is.
                     TrackedItems = [.. trackedFiles.Select(p => new TrackedItem
                     {
                         Path = p,
@@ -727,8 +716,7 @@ namespace CheckVersion.GUI.Views
         }
 
         /// <summary>
-        /// Show that a read is under way. The window stays interactive, but the repo buttons are held so a
-        /// second read cannot be stacked on the first.
+        /// Show that a read is under way. The window stays interactive, but the repo buttons are held so a second read cannot be stacked on the first.
         /// </summary>
         private void SetReading(bool reading)
         {
@@ -823,8 +811,7 @@ namespace CheckVersion.GUI.Views
             if (isEmptyCommit
                 && !await Dialogs.ConfirmAsync(this, "Empty commit", "There is no changed file. Create an empty commit anyway?"))
             {
-                // Nothing else will set the line now the read is over, and leaving it on "Reading repo…"
-                // would claim work that is no longer running.
+                // Nothing else will set the line now the read is over, and leaving it on "Reading repo…" would claim work that is no longer running.
                 SetStatus("Commit cancelled.", StatusKind.Pending);
                 return;
             }
@@ -1119,8 +1106,7 @@ namespace CheckVersion.GUI.Views
         }
 
         /// <summary>
-        /// Everything the window shows, gathered off the UI thread. Deliberately holds plain data only —
-        /// no control may be touched from the thread that builds it.
+        /// Everything the window shows, gathered off the UI thread. Deliberately holds plain data only — no control may be touched from the thread that builds it.
         /// </summary>
         private sealed class RepoSnapshot
         {
